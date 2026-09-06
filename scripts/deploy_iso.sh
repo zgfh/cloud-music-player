@@ -3,6 +3,7 @@ set -euo pipefail
 
 # 确保在项目根目录执行
 cd "$(dirname "$0")/.."
+PROJECT_ROOT=$(pwd)
 
 # launchd/cron 不会加载交互式 shell 环境。Flet 在生成 Flutter
 # 工程时就需要 flutter/dart/pod，因此必须在 flet build 之前补全 PATH。
@@ -173,9 +174,8 @@ fi
 # ====== 2. 写入自动签名 exportOptions ======
 log_message "${YELLOW}🔏 配置自动签名 (development / team 6CS69Y977H)...${NC}"
 
-# 注意：不要删除缓存的描述文件来"强制续新"——命令行 xcodebuild 无法访问 Xcode 的
-# Apple ID 账号（报 "No Accounts"），删了就构建失败。Xcode 会在 profile 过期后
-# 下次构建时自动重新申请，无需干预。
+# 不删除缓存的描述文件来“强制续新”。只要 Xcode 已登录 Apple Account，下面的
+# xcodebuild -allowProvisioningUpdates 会在 profile 缺失或过期时自动申请/下载。
 
 # flet build 每次重新生成 Xcode 工程时会把 Runner 签名重置为 Manual（且不带 profile），
 # 导致 "requires a provisioning profile" 构建失败；这里强制改回 Automatic
@@ -211,10 +211,33 @@ PLIST
 find build/flutter/build/ios -name "*.ipa" -type f -delete 2>/dev/null || true
 
 FLUTTER_BUILD_MODE="release"
+XCODE_CONFIGURATION="Release"
 if [ "$FAST_MODE" = "1" ]; then
     FLUTTER_BUILD_MODE="debug"
+    XCODE_CONFIGURATION="Debug"
     log_message "${YELLOW}⚡ 快速模式：使用 debug 增量构建${NC}"
 fi
+
+# Flutter CLI 没有透传 -allowProvisioningUpdates 的参数。先做一次 Xcode 增量构建，
+# 让 Xcode 刷新免费开发者账号的 provisioning profile；后续 archive 会直接复用。
+log_message "${YELLOW}🔄 检查并自动刷新 iOS provisioning profile...${NC}"
+PROVISION_LOG="$PROJECT_ROOT/scripts/logs/xcode_provision_$(date '+%Y%m%d_%H%M%S').log"
+if ! (cd build/flutter && xcodebuild \
+    -workspace ios/Runner.xcworkspace \
+    -scheme Runner \
+    -configuration "$XCODE_CONFIGURATION" \
+    -destination 'generic/platform=iOS' \
+    -allowProvisioningUpdates \
+    -allowProvisioningDeviceRegistration \
+    build >"$PROVISION_LOG" 2>&1); then
+    log_message "${RED}❌ 自动刷新签名失败，最后 80 行输出：${NC}"
+    tail -80 "$PROVISION_LOG"
+    log_message "${YELLOW}📄 完整日志已保留: $PROVISION_LOG${NC}"
+    log_message "${YELLOW}请确认 Xcode > Settings > Accounts 已登录 Apple Account${NC}"
+    exit 1
+fi
+rm -f "$PROVISION_LOG"
+log_message "${GREEN}✅ provisioning profile 已就绪${NC}"
 
 log_message "${YELLOW}📦 构建并签名 IPA ($FLUTTER_BUILD_MODE)...${NC}"
 
