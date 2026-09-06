@@ -28,7 +28,7 @@ usage() {
     echo ""
     echo "选项:"
     echo "  (无参数)     自动判断：源码有更新则完整重建，否则仅刷新签名"
-    echo "  --rebuild    强制完整重建（flet 打包 + flutter 签名）"
+    echo "  --rebuild    强制完整重建（Flet 生成工程 + Xcode 构建签名）"
     echo "  --refresh    优先仅刷新签名；产物不安全时自动完整重建"
     echo "  --fast       快速模式：debug 增量构建代替 release archive，迭代测试快数倍"
     echo "  --help       显示帮助"
@@ -206,54 +206,54 @@ cat > build/flutter/ios/exportOptions.plist <<'PLIST'
 </plist>
 PLIST
 
-# ====== 3. flutter 构建并签名 IPA（每次都做，刷新签名） ======
-# 构建前清理旧 IPA，避免 find 命中过期产物
-find build/flutter/build/ios -name "*.ipa" -type f -delete 2>/dev/null || true
-
-FLUTTER_BUILD_MODE="release"
+# ====== 3. Xcode 构建、签名并导出 IPA（每次都做，刷新签名） ======
 XCODE_CONFIGURATION="Release"
 if [ "$FAST_MODE" = "1" ]; then
-    FLUTTER_BUILD_MODE="debug"
     XCODE_CONFIGURATION="Debug"
     log_message "${YELLOW}⚡ 快速模式：使用 debug 增量构建${NC}"
 fi
 
-# Flutter CLI 没有透传 -allowProvisioningUpdates 的参数。先做一次 Xcode 增量构建，
-# 让 Xcode 刷新免费开发者账号的 provisioning profile；后续 archive 会直接复用。
-log_message "${YELLOW}🔄 检查并自动刷新 iOS provisioning profile...${NC}"
-PROVISION_LOG="$PROJECT_ROOT/scripts/logs/xcode_provision_$(date '+%Y%m%d_%H%M%S').log"
-if ! (cd build/flutter && xcodebuild \
-    -workspace ios/Runner.xcworkspace \
+BUILD_RUN_ID=$(date '+%Y%m%d_%H%M%S')
+ARCHIVE_PATH="$PROJECT_ROOT/build/flutter/build/ios/archive/CloudMusicPlayer_${BUILD_RUN_ID}.xcarchive"
+EXPORT_PATH="$PROJECT_ROOT/build/flutter/build/ios/ipa/$BUILD_RUN_ID"
+XCODE_BUILD_LOG="$PROJECT_ROOT/scripts/logs/xcode_build_${BUILD_RUN_ID}.log"
+
+# archive 自身携带 -allowProvisioningUpdates，因此 profile 缺失或过期时会由
+# 已登录 Apple Account 的 Xcode 自动申请，无需先执行一次重复的预构建。
+log_message "${YELLOW}📦 使用 Xcode archive 构建并自动刷新签名 ($XCODE_CONFIGURATION)...${NC}"
+if ! xcodebuild \
+    -workspace "$PROJECT_ROOT/build/flutter/ios/Runner.xcworkspace" \
     -scheme Runner \
     -configuration "$XCODE_CONFIGURATION" \
     -destination 'generic/platform=iOS' \
+    -archivePath "$ARCHIVE_PATH" \
     -allowProvisioningUpdates \
     -allowProvisioningDeviceRegistration \
-    build >"$PROVISION_LOG" 2>&1); then
-    log_message "${RED}❌ 自动刷新签名失败，最后 80 行输出：${NC}"
-    tail -80 "$PROVISION_LOG"
-    log_message "${YELLOW}📄 完整日志已保留: $PROVISION_LOG${NC}"
+    archive >"$XCODE_BUILD_LOG" 2>&1; then
+    log_message "${RED}❌ Xcode archive 失败，最后 80 行输出：${NC}"
+    tail -80 "$XCODE_BUILD_LOG"
+    log_message "${YELLOW}📄 完整日志已保留: $XCODE_BUILD_LOG${NC}"
     log_message "${YELLOW}请确认 Xcode > Settings > Accounts 已登录 Apple Account${NC}"
     exit 1
 fi
-rm -f "$PROVISION_LOG"
-log_message "${GREEN}✅ provisioning profile 已就绪${NC}"
 
-log_message "${YELLOW}📦 构建并签名 IPA ($FLUTTER_BUILD_MODE)...${NC}"
-
-FLUTTER_BUILD_LOG=$(mktemp -t deploy_flutter)
-if ! (cd build/flutter && flutter build ipa --$FLUTTER_BUILD_MODE \
-    --export-options-plist ios/exportOptions.plist >"$FLUTTER_BUILD_LOG" 2>&1); then
-    log_message "${RED}❌ flutter build ipa 失败，最后 40 行输出：${NC}"
-    tail -40 "$FLUTTER_BUILD_LOG"
-    rm -f "$FLUTTER_BUILD_LOG"
+log_message "${YELLOW}📤 使用 Xcode 导出 development IPA...${NC}"
+if ! xcodebuild \
+    -exportArchive \
+    -archivePath "$ARCHIVE_PATH" \
+    -exportPath "$EXPORT_PATH" \
+    -exportOptionsPlist "$PROJECT_ROOT/build/flutter/ios/exportOptions.plist" \
+    -allowProvisioningUpdates >>"$XCODE_BUILD_LOG" 2>&1; then
+    log_message "${RED}❌ Xcode 导出 IPA 失败，最后 80 行输出：${NC}"
+    tail -80 "$XCODE_BUILD_LOG"
+    log_message "${YELLOW}📄 完整日志已保留: $XCODE_BUILD_LOG${NC}"
     exit 1
 fi
-tail -15 "$FLUTTER_BUILD_LOG"
-rm -f "$FLUTTER_BUILD_LOG"
+rm -f "$XCODE_BUILD_LOG"
+log_message "${GREEN}✅ Xcode 构建、签名和 IPA 导出完成${NC}"
 
 # ====== 4. 查找 IPA ======
-IPA_PATH=$(find build/flutter/build/ios -name "*.ipa" -type f 2>/dev/null | head -1)
+IPA_PATH=$(find "$EXPORT_PATH" -name "*.ipa" -type f 2>/dev/null | head -1)
 
 if [ -z "$IPA_PATH" ]; then
     log_message "${RED}❌ 构建失败，未找到 IPA 文件${NC}"

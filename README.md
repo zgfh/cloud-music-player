@@ -157,6 +157,15 @@ bash scripts/deploy_iso.sh --rebuild # 强制完整重建
 bash scripts/deploy_iso.sh --refresh # 仅刷新签名（代码未变时，速度快）
 ```
 
+也可通过 Tarsier-AI 的 Accessibility 语义树操作 Xcode GUI，让 Xcode 执行
+Build/Run（构建、签名、安装并启动到当前选中的 iPhone）：
+```bash
+uv tool install 'tarsier-ai==0.6.0' # 首次安装
+bash scripts/deploy_xcode_tarsier.sh
+```
+该方式要求 macOS 已登录桌面、Xcode 已登录 Apple Account，并给 Tarsier Python
+授予“辅助功能”权限；锁屏的定时任务不适合 GUI 自动化，请使用 `deploy_iso.sh`。
+
 手动构建（需 macOS + Xcode + CocoaPods，详见 [docs/MOBILE_BUILD_GUIDE.md](docs/MOBILE_BUILD_GUIDE.md)）：
 ```bash
 flet build ipa --yes   # 打包 Python 并生成 Flutter 工程（产物未签名，无法直接装真机）

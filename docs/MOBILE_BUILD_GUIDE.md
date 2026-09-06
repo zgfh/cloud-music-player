@@ -24,7 +24,23 @@ bash scripts/deploy_iso.sh --refresh # 仅刷新签名（代码未变时用，�
 ```
 
 脚本自动完成：检测连接的 iPhone → 判断是否需要重新打包 → 写入自动签名配置 →
-`flutter build ipa` 签名 → 检查签名有效期 → `devicectl` 安装到设备。
+`xcodebuild archive` 构建签名 → Xcode 导出 IPA → 检查签名有效期 →
+`devicectl` 安装到设备。
+
+### Tarsier-AI 操作 Xcode GUI
+
+需要验证 Xcode 桌面自动化时，可让 Tarsier-AI 读取 Accessibility 语义树并点击
+Xcode 的 Run，由 Xcode 完成构建、签名、安装和启动：
+
+```bash
+uv tool install 'tarsier-ai==0.6.0' # 首次安装
+bash scripts/deploy_xcode_tarsier.sh
+bash scripts/deploy_xcode_tarsier.sh --timeout 1200 # 可选：延长超时
+```
+
+运行前需在 Xcode 中选择目标 iPhone，并确保 Xcode Apple Account 已登录；运行脚本的
+Tarsier Python 还需获得 macOS“辅助功能”权限。GUI 自动化要求用户桌面会话保持登录且
+未锁屏，因此无人值守的定时续签仍推荐 `deploy_iso.sh`。
 
 ### 手动构建
 
