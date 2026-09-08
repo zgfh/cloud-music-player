@@ -501,6 +501,8 @@ class FletAudioPlayer:
         self._loaded.clear()
 
     def load(self, file_path: str) -> bool:
+        import time
+
         try:
             file_path_str = (
                 os.fspath(file_path)
@@ -523,6 +525,9 @@ class FletAudioPlayer:
             self._state = self._AudioState.STOPPED
             self._duration = 0.0
             self._position_ms = 0
+            # 新曲收到首个 position 事件前，以加载时刻作为外推基准，不能
+            # 沿用上一首的时间戳（初始值 0 也会被误算为已播放很久）。
+            self._position_ts = time.time()
             self._completed = False
             logger.info(f"Flet音频加载成功: {file_path_str} (src={src})")
             return True
@@ -626,7 +631,7 @@ class FletAudioPlayer:
 
         try:
             position = self._position_ms / 1000.0
-            if self.is_playing():
+            if self.is_playing() and self._position_ts > 0:
                 # 位置事件约每秒一次，播放中按时间差外推，保证进度条平滑
                 position += max(0.0, time.time() - self._position_ts)
                 if self._duration > 0:

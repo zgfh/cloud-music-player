@@ -28,7 +28,7 @@ async def test_play_downloaded_song_skips_download(playback_env):
     assert playback_env.player.loaded_files[-1].endswith("local.mp3")
     assert playback_env.player.stopped_count == 0
     assert playback_env.view.status_label.value == "播放中"
-    assert playback_env.view.playback_control_component.play_icon.name == ft.Icons.PAUSE
+    assert playback_env.view.playback_control_component.play_icon.icon == ft.Icons.PAUSE
 
 
 async def test_existing_local_file_wins_even_with_stale_metadata(playback_env):
@@ -76,7 +76,9 @@ async def test_volume_slider_applies_volume_immediately(playback_env):
     assert playback_env.config.get("player.volume") == 35
 
 
-async def test_seek_uses_user_value_even_if_progress_refresh_changes_slider(playback_env):
+async def test_seek_uses_user_value_even_if_progress_refresh_changes_slider(
+    playback_env,
+):
     """防抖期间的进度刷新不能覆盖用户选择的跳转位置。"""
     component = playback_env.view.playback_control_component
     component._cached_duration = 200
@@ -90,6 +92,25 @@ async def test_seek_uses_user_value_even_if_progress_refresh_changes_slider(play
     component.progress_slider.value = 5
     await asyncio.sleep(0.6)
     assert playback_env.player.seek_calls == [120]
+
+
+async def test_switching_song_resets_progress_and_cancels_pending_seek(playback_env):
+    """下一曲开始时必须归零，上一曲的延迟跳转不能落到新曲上。"""
+    first = add_remote_song(playback_env.library, "first.mp3", downloaded=True)
+    second = add_remote_song(playback_env.library, "second.mp3", downloaded=True)
+    assert await playback_env.view.play_selected_song(first) is True
+    component = playback_env.view.playback_control_component
+    component._cached_duration = 200
+    component.progress_slider.value = 60
+    component._on_seek(SimpleNamespace(control=component.progress_slider))
+
+    assert await playback_env.view.play_selected_song(second) is True
+    assert component.progress_slider.value == 0
+    assert component.current_time_label.value == "00:00"
+    assert component.total_time_label.value == "00:00"
+    assert component._cached_duration == 0
+    await asyncio.sleep(0.6)
+    assert playback_env.player.seek_calls == []
 
 
 async def test_stop_is_sent_even_when_cached_state_is_stale(playback_env):
@@ -109,8 +130,13 @@ async def test_stop_works_while_paused(playback_env):
     """暂停中点击停止也应归零并进入停止状态。"""
     info = add_remote_song(playback_env.library, "paused.mp3", downloaded=True)
     assert await playback_env.view.play_selected_song(info) is True
+    assert playback_env.view.playback_control_component.play_icon.icon == ft.Icons.PAUSE
     await playback_env.view.playback_controller.toggle_playback()
     assert playback_env.view.status_label.value == "暂停"
+    assert (
+        playback_env.view.playback_control_component.play_icon.icon
+        == ft.Icons.PLAY_ARROW
+    )
 
     await playback_env.view.playback_control_component._on_stop_playback(None)
 
@@ -141,12 +167,14 @@ async def test_download_for_play_immediately_updates_playlist_icon(playback_env)
     """在线播放触发下载后，播放列表应立即改为绿色已下载状态。"""
     info = add_remote_song(playback_env.library, "online.mp3")
     playlist_data = {
-        "playlists": [{
-            "id": 1,
-            "name": "默认播放列表",
-            "songs": [{"name": "online.mp3", "info": info, "state": {}}],
-            "current_index": 0,
-        }],
+        "playlists": [
+            {
+                "id": 1,
+                "name": "默认播放列表",
+                "songs": [{"name": "online.mp3", "info": info, "state": {}}],
+                "current_index": 0,
+            }
+        ],
         "current_playlist_id": 1,
         "next_id": 2,
     }
@@ -155,19 +183,17 @@ async def test_download_for_play_immediately_updates_playlist_icon(playback_env)
     playback_env.view.playlist_manager.invalidate_cache()
     playback_env.view.playlist_component.refresh_display()
 
-    before_icon = (
-        playback_env.view.playlist_component.song_list.controls[0]
-        .content.controls[-1]
-    )
+    before_icon = playback_env.view.playlist_component.song_list.controls[
+        0
+    ].content.controls[-1]
     assert before_icon.icon == ft.Icons.CLOUD_DOWNLOAD_OUTLINED
 
     ok = await playback_env.view.play_selected_song(info)
 
     assert ok is True
-    after_icon = (
-        playback_env.view.playlist_component.song_list.controls[0]
-        .content.controls[-1]
-    )
+    after_icon = playback_env.view.playlist_component.song_list.controls[
+        0
+    ].content.controls[-1]
     assert after_icon.icon == ft.Icons.TASK_ALT
 
 
@@ -230,11 +256,15 @@ async def test_new_click_supersedes_slow_download(playback_env):
     playback_env.client.download_delay = {"A.mp3": 0.5, "B.mp3": 0.05}
 
     task_a = asyncio.create_task(
-        playback_env.view.play_selected_song(playback_env.library.get_song_info("A.mp3")))
+        playback_env.view.play_selected_song(
+            playback_env.library.get_song_info("A.mp3")
+        )
+    )
     await asyncio.sleep(0.02)  # 让 A 进入下载中
 
     ok_b = await playback_env.view.play_selected_song(
-        playback_env.library.get_song_info("B.mp3"))
+        playback_env.library.get_song_info("B.mp3")
+    )
     assert ok_b is True
     assert playback_env.player.loaded_files[-1].endswith("B.mp3")
 
@@ -254,8 +284,11 @@ async def test_switching_song_stops_old_playback_immediately(playback_env):
     assert await playback_env.view.play_selected_song(old_info) is True
     assert playback_env.player.playing is True
 
-    task = asyncio.create_task(playback_env.view.play_selected_song(
-        playback_env.library.get_song_info("new.mp3")))
+    task = asyncio.create_task(
+        playback_env.view.play_selected_song(
+            playback_env.library.get_song_info("new.mp3")
+        )
+    )
     await asyncio.sleep(0.05)
 
     # 旧歌已停、状态明确显示正在下载新歌
@@ -274,7 +307,8 @@ async def test_download_failure_shows_error_status(playback_env):
     playback_env.client.download_error = RuntimeError("404 Not Found")
 
     ok = await playback_env.view.play_selected_song(
-        playback_env.library.get_song_info("gone.mp3"))
+        playback_env.library.get_song_info("gone.mp3")
+    )
 
     assert ok is False
     assert playback_env.view.status_label.value == "下载失败"
@@ -287,7 +321,8 @@ async def test_download_exception_is_caught(playback_env):
     playback_env.client.download_error = ConnectionError("network reset")
 
     ok = await playback_env.view.play_selected_song(
-        playback_env.library.get_song_info("boom.mp3"))
+        playback_env.library.get_song_info("boom.mp3")
+    )
 
     assert ok is False
     assert playback_env.view.status_label.value == "下载失败"
@@ -296,9 +331,7 @@ async def test_download_exception_is_caught(playback_env):
 async def test_failed_download_skips_to_next_available_song(playback_env):
     """自动播放时，第一首下载失败应继续播放下一首本地歌曲。"""
     failed = add_remote_song(playback_env.library, "gone.mp3")
-    available = add_remote_song(
-        playback_env.library, "available.mp3", downloaded=True
-    )
+    available = add_remote_song(playback_env.library, "available.mp3", downloaded=True)
     playback_env.client.download_error = RuntimeError("404 Not Found")
 
     playback_env.view.playlist_manager._current_playlist_cache = {
@@ -322,7 +355,8 @@ async def test_play_request_without_remote_path_fails_visibly(playback_env):
     playback_env.library.songs["stale.mp3"]["filepath"] = ""  # 确保不走本地分支
 
     ok = await playback_env.view.play_selected_song(
-        playback_env.library.get_song_info("stale.mp3"))
+        playback_env.library.get_song_info("stale.mp3")
+    )
 
     assert ok is False
     assert playback_env.view.status_label.value == "无法播放"

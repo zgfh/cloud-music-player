@@ -85,6 +85,23 @@ def test_changing_source_updates_flet_service(flet_audio_player, tmp_path):
     assert not flet_audio_player._loaded.is_set()
 
 
+def test_new_source_position_starts_at_zero(flet_audio_player, tmp_path, monkeypatch):
+    """切换歌曲后，首个原生位置事件到达前不能沿用旧曲时间差。"""
+    first = tmp_path / "first.mp3"
+    second = tmp_path / "second.mp3"
+    first.write_bytes(b"ID3")
+    second.write_bytes(b"ID3")
+    assert flet_audio_player.load(first)
+    flet_audio_player._position_ms = 90000
+    flet_audio_player._position_ts = 1
+
+    monkeypatch.setattr("time.time", lambda: 1000.0)
+    assert flet_audio_player.load(second)
+    flet_audio_player._state = flet_audio_player._AudioState.PLAYING
+
+    assert flet_audio_player.get_position() == 0
+
+
 @pytest.mark.asyncio
 async def test_stop_commands_complete_in_order(flet_audio_player, tmp_path):
     """暂停和归零必须在返回前按顺序完成，不能延迟干扰下一首歌。"""

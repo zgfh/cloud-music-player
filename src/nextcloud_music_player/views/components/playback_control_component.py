@@ -41,6 +41,7 @@ class PlaybackControlComponent:
         self._updating_progress = False
         self._seek_timer = None
         self._seek_pending = False
+        self._seek_generation = 0
         self._cached_duration = 0
         self._built = False
 
@@ -321,17 +322,22 @@ class PlaybackControlComponent:
         # e.control.value，期间的进度刷新可能已把它改回旧播放位置，导致
         # 用户看到滑块回跳且 seek 实际没有发生。因此必须立刻保存目标值。
         requested_value = float(e.control.value)
+        self._seek_generation += 1
+        seek_generation = self._seek_generation
         self._seek_pending = True
 
         def do_seek():
             try:
+                if seek_generation != self._seek_generation:
+                    return
                 position = requested_value / 100.0
                 duration = self.get_current_duration()
                 if duration > 0:
                     target = position * duration
                     self.playback_service.seek_to_position(target)
             finally:
-                self._seek_pending = False
+                if seek_generation == self._seek_generation:
+                    self._seek_pending = False
 
         import threading
 
@@ -372,6 +378,12 @@ class PlaybackControlComponent:
 
     def reset_progress(self):
         """重置进度条"""
+        # 切歌时作废上一首尚在防抖窗口内的跳转，避免它作用到新曲。
+        self._seek_generation += 1
+        if self._seek_timer:
+            self._seek_timer.cancel()
+            self._seek_timer = None
+        self._seek_pending = False
         self._updating_progress = True
         self.progress_slider.value = 0
         self.current_time_label.value = "00:00"
@@ -416,7 +428,7 @@ class PlaybackControlComponent:
         if not self._built or not hasattr(self, "play_pause_button"):
             return
         if is_playing:
-            self.play_icon.name = ft.Icons.PAUSE
+            self.play_icon.icon = ft.Icons.PAUSE
             self.play_pause_button.gradient = ft.LinearGradient(
                 begin=ft.Alignment(-1, -1),
                 end=ft.Alignment(1, 1),
@@ -424,7 +436,7 @@ class PlaybackControlComponent:
             )
             self.play_pause_button.shadow = glow(Color.WARNING, radius=18, alpha="59")
         else:
-            self.play_icon.name = ft.Icons.PLAY_ARROW
+            self.play_icon.icon = ft.Icons.PLAY_ARROW
             self.play_pause_button.gradient = Gradient.primary()
             self.play_pause_button.shadow = glow(Color.GLOW_CYAN, radius=18, alpha="59")
         self.page.update()

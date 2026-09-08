@@ -495,6 +495,8 @@ class PlaybackView:
                 logger.info(f"播放请求已过期，放弃播放: {file_path}")
                 return False
 
+            # 新曲加载前清除上一首的 UI 时长、位置和待执行跳转。
+            self.playback_control_component.reset_progress()
             self.playback_service.set_current_song(file_path)
             try:
                 played = await asyncio.wait_for(
