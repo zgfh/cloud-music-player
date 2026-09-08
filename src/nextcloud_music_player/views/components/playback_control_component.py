@@ -40,6 +40,7 @@ class PlaybackControlComponent:
         self._button_busy = False
         self._updating_progress = False
         self._seek_timer = None
+        self._seek_pending = False
         self._cached_duration = 0
         self._built = False
 
@@ -316,12 +317,21 @@ class PlaybackControlComponent:
         if self._seek_timer:
             self._seek_timer.cancel()
 
+        # Flet 会复用同一个 Slider 控件。若在防抖定时器触发时才读取
+        # e.control.value，期间的进度刷新可能已把它改回旧播放位置，导致
+        # 用户看到滑块回跳且 seek 实际没有发生。因此必须立刻保存目标值。
+        requested_value = float(e.control.value)
+        self._seek_pending = True
+
         def do_seek():
-            position = float(e.control.value) / 100.0
-            duration = self.get_current_duration()
-            if duration > 0:
-                target = position * duration
-                self.playback_service.seek_to_position(target)
+            try:
+                position = requested_value / 100.0
+                duration = self.get_current_duration()
+                if duration > 0:
+                    target = position * duration
+                    self.playback_service.seek_to_position(target)
+            finally:
+                self._seek_pending = False
 
         import threading
 
@@ -333,6 +343,9 @@ class PlaybackControlComponent:
         if not self._built or not self.playback_service:
             return
         if not hasattr(self, "progress_slider"):
+            return
+        # 用户操作尚在防抖窗口内时保留其选择，避免定时刷新造成视觉回跳。
+        if self._seek_pending:
             return
         self._updating_progress = True
         try:

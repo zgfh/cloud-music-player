@@ -57,6 +57,7 @@ class FakeAudioPlayer:
         self.stopped_count = 0
         self.completed = False
         self.volume = 0.7
+        self.seek_calls = []
 
     def load(self, path):
         self.loaded_files.append(str(path))
@@ -97,6 +98,7 @@ class FakeAudioPlayer:
         return 10.0 if self.playing else 0.0
 
     def seek(self, position):
+        self.seek_calls.append(position)
         return True
 
     def set_volume(self, volume):

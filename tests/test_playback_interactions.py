@@ -76,6 +76,22 @@ async def test_volume_slider_applies_volume_immediately(playback_env):
     assert playback_env.config.get("player.volume") == 35
 
 
+async def test_seek_uses_user_value_even_if_progress_refresh_changes_slider(playback_env):
+    """防抖期间的进度刷新不能覆盖用户选择的跳转位置。"""
+    component = playback_env.view.playback_control_component
+    component._cached_duration = 200
+    component.progress_slider.value = 60
+
+    component._on_seek(SimpleNamespace(control=component.progress_slider))
+    component.update_progress()
+
+    # 待处理时保留用户设置的滑块位置；定时器随后按事件值而非控件现值跳转。
+    assert component.progress_slider.value == 60
+    component.progress_slider.value = 5
+    await asyncio.sleep(0.6)
+    assert playback_env.player.seek_calls == [120]
+
+
 async def test_stop_is_sent_even_when_cached_state_is_stale(playback_env):
     """内部状态暂时不同步时，停止按钮仍必须命令原生播放器停止。"""
     playback_env.player.playing = True
