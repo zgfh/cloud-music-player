@@ -404,6 +404,7 @@ class FletAudioPlayer:
         self._position_ts = 0.0
         self._loaded = asyncio.Event()
         self._completed = False
+        self._pause_requested = False
         self._tasks = set()
 
     def _run(self, coro):
@@ -471,6 +472,10 @@ class FletAudioPlayer:
 
     def _on_state_change(self, e):
         try:
+            # pause 是异步原生命令；暂停请求之后迟到的 PLAYING 事件不能
+            # 再把播放器状态和界面恢复成播放。
+            if self._pause_requested and e.state == self._AudioState.PLAYING:
+                return
             self._state = e.state
             if e.state == self._AudioState.COMPLETED:
                 self._completed = True
@@ -529,6 +534,7 @@ class FletAudioPlayer:
             # 沿用上一首的时间戳（初始值 0 也会被误算为已播放很久）。
             self._position_ts = time.time()
             self._completed = False
+            self._pause_requested = False
             logger.info(f"Flet音频加载成功: {file_path_str} (src={src})")
             return True
         except Exception as e:
@@ -539,6 +545,7 @@ class FletAudioPlayer:
         try:
             if not self._audio:
                 return False
+            self._pause_requested = False
             self._run(self._audio.play())
             logger.info("Flet开始播放音频")
             return True
@@ -551,6 +558,7 @@ class FletAudioPlayer:
         if not self._audio:
             return False
         try:
+            self._pause_requested = False
             # iOS audioplayers 对本地 DeviceFileSource 不保证触发 on_loaded；
             # page.update 已提交 service 后让出一轮循环即可发送 play。
             await asyncio.sleep(0)
@@ -565,11 +573,26 @@ class FletAudioPlayer:
         try:
             if not self._audio:
                 return False
-            self._run(self._audio.pause())
+            self._pause_requested = True
+            self._run(self.pause_async())
             logger.info("Flet暂停播放")
             return True
         except Exception as e:
             logger.error(f"Flet暂停失败: {e}")
+            return False
+
+    async def pause_async(self) -> bool:
+        """等待原生暂停命令完成，避免迟到的播放事件恢复状态。"""
+        if not self._audio:
+            return False
+        try:
+            self._pause_requested = True
+            await self._audio.pause()
+            self._state = getattr(self._AudioState, "PAUSED", self._AudioState.STOPPED)
+            return True
+        except Exception:
+            self._pause_requested = False
+            logger.exception("Flet暂停失败")
             return False
 
     def stop(self) -> bool:

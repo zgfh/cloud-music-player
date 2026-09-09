@@ -3,6 +3,7 @@
 包括上一曲、下一曲、播放模式控制等功能
 """
 
+import asyncio
 import logging
 import random
 from enum import Enum
@@ -44,6 +45,11 @@ class PlaybackController:
         self.play_song_callback = play_song_callback
         self.ui_update_callback = ui_update_callback
         self.play_mode = PlayMode.REPEAT_ONE
+        self._sleep_timer_task: asyncio.Task | None = None
+        self._sleep_timer_minutes = int(
+            self.playback_service.config_manager.get("player.sleep_timer_minutes", 30)
+            or 30
+        )
 
         logger.info("播放控制器初始化完成")
 
@@ -150,6 +156,48 @@ class PlaybackController:
         except Exception as e:
             logger.error(f"停止播放失败: {e}")
             raise
+
+    def get_sleep_timer_minutes(self) -> int:
+        """返回保存的睡眠定时器时长。"""
+        return self._sleep_timer_minutes
+
+    def is_sleep_timer_active(self) -> bool:
+        return bool(self._sleep_timer_task and not self._sleep_timer_task.done())
+
+    def start_sleep_timer(self, minutes: int) -> bool:
+        """启动睡眠定时器，到期后停止播放。"""
+        try:
+            minutes = int(minutes)
+        except (TypeError, ValueError):
+            return False
+        if not 1 <= minutes <= 1440:
+            return False
+
+        self.cancel_sleep_timer()
+        self._sleep_timer_minutes = minutes
+        config = self.playback_service.config_manager
+        config.set("player.sleep_timer_minutes", minutes)
+        config.save_config()
+        self._sleep_timer_task = asyncio.create_task(
+            self._sleep_timer_worker(minutes * 60)
+        )
+        return True
+
+    def cancel_sleep_timer(self) -> None:
+        task = self._sleep_timer_task
+        self._sleep_timer_task = None
+        if task and not task.done():
+            task.cancel()
+
+    async def _sleep_timer_worker(self, seconds: float) -> None:
+        try:
+            await asyncio.sleep(seconds)
+            await self.stop_playback()
+        except asyncio.CancelledError:
+            return
+        finally:
+            if self._sleep_timer_task is asyncio.current_task():
+                self._sleep_timer_task = None
 
     async def previous_song(self):
         """播放上一曲"""

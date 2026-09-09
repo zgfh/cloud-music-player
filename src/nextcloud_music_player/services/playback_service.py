@@ -532,7 +532,13 @@ class PlaybackService:
                 and self.current_song_state["is_playing"]
                 and not self.current_song_state["is_paused"]
             ):
-                if self.audio_player.pause():
+                pause_async = getattr(self.audio_player, "pause_async", None)
+                paused = (
+                    await pause_async()
+                    if pause_async is not None
+                    else self.audio_player.pause()
+                )
+                if paused:
                     self.current_song_state["is_paused"] = True
                     self.current_song_state["is_playing"] = False
                     logger.info("音乐已暂停")

@@ -111,6 +111,7 @@ class ConfigManager:
                 "volume": 70,
                 "play_mode": "repeat_one",
                 "auto_play_on_select": True,
+                "sleep_timer_minutes": 30,
             },
             "metadata": {
                 "musicbrainz_enabled": True,

@@ -208,6 +208,42 @@ class PlaybackControlComponent:
             padding=4,
         )
 
+        # === 睡眠定时器（默认 30 分钟，可输入 1-1440 分钟） ===
+        sleep_minutes = self.playback_controller.get_sleep_timer_minutes()
+        self.sleep_timer_input = ft.TextField(
+            value=str(sleep_minutes),
+            width=92,
+            height=42,
+            keyboard_type=ft.KeyboardType.NUMBER,
+            text_align=ft.TextAlign.RIGHT,
+            color=Color.TEXT_PRIMARY,
+            bgcolor=Color.BG_SURFACE_ALT,
+            border_color=Color.BORDER,
+            focused_border_color=Color.PRIMARY,
+            content_padding=ft.Padding(left=8, right=8, top=4, bottom=4),
+        )
+        self.sleep_timer_button = ft.OutlinedButton(
+            "启动",
+            icon=ft.Icons.BEDTIME_OUTLINED,
+            on_click=self._on_sleep_timer_toggle,
+        )
+        self.sleep_timer_status = ft.Text(
+            f"默认 {sleep_minutes} 分钟",
+            size=FontSize.MICRO,
+            color=Color.TEXT_MUTED,
+        )
+        sleep_timer_row = ft.Row(
+            [
+                ft.Icon(ft.Icons.TIMER_OUTLINED, color=Color.TEXT_MUTED, size=17),
+                self.sleep_timer_input,
+                ft.Text("分钟", size=FontSize.MICRO, color=Color.TEXT_MUTED),
+                self.sleep_timer_button,
+                self.sleep_timer_status,
+            ],
+            spacing=Space.XS,
+            wrap=True,
+        )
+
         # === 组装（控制台卡片） ===
         self._container = ft.Container(
             content=ft.Column(
@@ -247,6 +283,7 @@ class PlaybackControlComponent:
                         spacing=Space.XS,
                     ),
                     mode_selector,
+                    sleep_timer_row,
                 ],
                 spacing=Space.MD,
             ),
@@ -286,6 +323,33 @@ class PlaybackControlComponent:
 
     async def _on_stop_playback(self, e):
         await self._safe_button_action(self.playback_controller.stop_playback, "停止")
+
+    async def _on_sleep_timer_toggle(self, e):
+        """启动或取消睡眠定时器。"""
+        if self.playback_controller.is_sleep_timer_active():
+            self.playback_controller.cancel_sleep_timer()
+            self.sleep_timer_input.disabled = False
+            self.sleep_timer_button.content = "启动"
+            self.sleep_timer_status.value = "已取消"
+            self.sleep_timer_status.color = Color.TEXT_MUTED
+            self.page.update()
+            return
+
+        try:
+            minutes = int(self.sleep_timer_input.value)
+        except (TypeError, ValueError):
+            minutes = 0
+        if not self.playback_controller.start_sleep_timer(minutes):
+            self.sleep_timer_status.value = "请输入 1-1440 分钟"
+            self.sleep_timer_status.color = Color.DANGER
+            self.page.update()
+            return
+
+        self.sleep_timer_input.disabled = True
+        self.sleep_timer_button.content = "取消"
+        self.sleep_timer_status.value = f"{minutes} 分钟后停止播放"
+        self.sleep_timer_status.color = Color.SUCCESS
+        self.page.update()
 
     def _on_volume_change(self, e):
         """音量变化"""

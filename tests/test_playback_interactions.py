@@ -12,8 +12,8 @@ import asyncio
 from types import SimpleNamespace
 
 import flet as ft
-
 from fakes import add_remote_song
+
 from nextcloud_music_player.services.playback_controller import PlayMode
 
 
@@ -74,6 +74,46 @@ async def test_volume_slider_applies_volume_immediately(playback_env):
 
     assert playback_env.player.volume == 0.35
     assert playback_env.config.get("player.volume") == 35
+
+
+async def test_sleep_timer_defaults_to_30_minutes_and_can_be_adjusted(playback_env):
+    """睡眠定时器默认 30 分钟，启动后保存用户调整值并可取消。"""
+    component = playback_env.view.playback_control_component
+    controller = playback_env.view.playback_controller
+
+    assert component.sleep_timer_input.value == "30"
+    component.sleep_timer_input.value = "45"
+    await component._on_sleep_timer_toggle(None)
+
+    assert controller.is_sleep_timer_active() is True
+    assert playback_env.config.get("player.sleep_timer_minutes") == 45
+    assert component.sleep_timer_input.disabled is True
+    assert component.sleep_timer_button.content == "取消"
+    assert component.sleep_timer_status.value == "45 分钟后停止播放"
+
+    await component._on_sleep_timer_toggle(None)
+    assert controller.is_sleep_timer_active() is False
+    assert component.sleep_timer_input.disabled is False
+    assert component.sleep_timer_button.content == "启动"
+
+
+async def test_sleep_timer_stops_playback_when_countdown_finishes(
+    playback_env, monkeypatch
+):
+    """睡眠倒计时结束后必须通过控制器停止播放并同步 UI。"""
+    controller = playback_env.view.playback_controller
+
+    async def no_wait(_seconds):
+        return None
+
+    monkeypatch.setattr(asyncio, "sleep", no_wait)
+    playback_env.player.playing = True
+    playback_env.view.playback_service.current_song_state["is_playing"] = True
+
+    await controller._sleep_timer_worker(1800)
+
+    assert playback_env.player.stopped_count == 1
+    assert playback_env.view.status_label.value == "停止"
 
 
 async def test_seek_uses_user_value_even_if_progress_refresh_changes_slider(

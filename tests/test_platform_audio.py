@@ -61,6 +61,24 @@ async def test_play_does_not_depend_on_ios_loaded_event(flet_audio_player, tmp_p
 
 
 @pytest.mark.asyncio
+async def test_pause_waits_for_native_command_and_ignores_late_playing_event(
+    flet_audio_player, tmp_path
+):
+    """暂停完成后，迟到的 PLAYING 事件不能恢复播放器状态。"""
+    song = tmp_path / "song.mp3"
+    song.write_bytes(b"ID3")
+    assert flet_audio_player.load(song)
+    flet_audio_player._state = flet_audio_player._AudioState.PLAYING
+
+    assert await flet_audio_player.pause_async() is True
+    assert flet_audio_player._audio.command_calls == ["pause"]
+    assert flet_audio_player.is_playing() is False
+
+    flet_audio_player._on_state_change(SimpleNamespace(state="playing"))
+    assert flet_audio_player.is_playing() is False
+
+
+@pytest.mark.asyncio
 async def test_reloading_same_source_keeps_loaded_state(flet_audio_player, tmp_path):
     song = tmp_path / "song.mp3"
     song.write_bytes(b"ID3")
