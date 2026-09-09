@@ -48,7 +48,7 @@ async def test_nextcloud_sync_download_and_playback(
 
     await tap_and_wait(
         tester,
-        lambda: tester.find_by_text("建立连接"),
+        lambda: tester.find_by_key("connect_button"),
         lambda: tester.find_by_text("同步"),
         timeout=15,
     )
@@ -84,7 +84,7 @@ async def test_nextcloud_wrong_password_shows_error_then_recovers(
         tester, mock_nextcloud_server.url, USERNAME, "not-the-password"
     )
 
-    await tester.tap(await tester.find_by_text("建立连接"))
+    await tester.tap(await tester.find_by_key("connect_button"))
     await settle_network(tester, 1.0)
 
     error = await wait_for(
@@ -99,7 +99,7 @@ async def test_nextcloud_wrong_password_shows_error_then_recovers(
     )
     await tap_and_wait(
         tester,
-        lambda: tester.find_by_text("建立连接"),
+        lambda: tester.find_by_key("connect_button"),
         lambda: tester.find_by_text("同步"),
         timeout=15,
     )
@@ -113,7 +113,7 @@ async def test_nextcloud_unreachable_server_shows_error(flet_app: ftt.FletTestAp
     await _open_nextcloud_form(tester)
     await _fill_credentials(tester, "http://127.0.0.1:1", USERNAME, PASSWORD)
 
-    await tester.tap(await tester.find_by_text("建立连接"))
+    await tester.tap(await tester.find_by_key("connect_button"))
     await settle_network(tester, 1.0)
 
     error = await wait_for(

@@ -456,6 +456,7 @@ class ConnectionView:
         # === 主按钮：霓虹发光 ===
         self.connect_button = ft.FilledButton(
             "建立连接",
+            key="connect_button",
             icon=ft.Icons.BOLT,
             on_click=self._on_connect_clicked,
             expand=2,

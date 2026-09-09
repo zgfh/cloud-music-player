@@ -140,7 +140,7 @@ async def test_gdrive_authorize_sync_download_and_playback(
 
     await tap_and_wait(
         tester,
-        lambda: tester.find_by_text("建立连接"),
+        lambda: tester.find_by_key("connect_button"),
         lambda: tester.find_by_text("同步"),
         timeout=15,
     )
@@ -203,7 +203,7 @@ async def test_gdrive_expired_token_refresh_failure_then_recovery(
     await _authorize(tester, mock_gdrive_server)
 
     mock_gdrive_server.set_token_error("invalid_grant")
-    await tester.tap(await tester.find_by_text("建立连接"))
+    await tester.tap(await tester.find_by_key("connect_button"))
     error = await wait_for(
         tester, lambda: tester.find_by_text_containing("连接失败"), timeout=15
     )
@@ -220,7 +220,7 @@ async def test_gdrive_expired_token_refresh_failure_then_recovery(
     mock_gdrive_server.set_expires_in(3600)
     await tap_and_wait(
         tester,
-        lambda: tester.find_by_text("建立连接"),
+        lambda: tester.find_by_key("connect_button"),
         lambda: tester.find_by_text("同步"),
         timeout=15,
     )

@@ -48,6 +48,12 @@ def switch_to_gdrive(view):
     view._on_source_type_changed(None)
 
 
+def test_connect_button_has_stable_test_key():
+    _, view = make_view()
+
+    assert view.connect_button.key == "connect_button"
+
+
 def fill_gdrive_credentials(
     view,
     client_id="cid.apps.googleusercontent.com",
