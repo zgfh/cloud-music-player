@@ -4,6 +4,7 @@
 
 import asyncio
 import logging
+import os
 import threading
 import time
 
@@ -903,15 +904,27 @@ class ConnectionView:
                 receiver.redirect_uri,
                 auth_url=endpoints["oauth_auth"],
             )
-            try:
-                await self.page.launch_url(auth_url)
-            except Exception as launch_ex:
-                # 浏览器拉起失败（无默认浏览器/测试宿主）不应终止授权：
-                # loopback 接收器继续等待，用户可手动打开授权页
-                logger.warning(f"打开浏览器失败，请手动访问授权页: {launch_ex}")
-                self.show_message(
-                    f"无法自动打开浏览器，请手动访问：{auth_url}", "warning"
+            # Device-mode E2E delivers the callback directly to the loopback
+            # receiver. Opening Safari backgrounds the test app and disconnects
+            # Flet's remote tester, so keep the app in the foreground there.
+            is_flet_test = any(
+                os.environ.get(name)
+                for name in (
+                    "FLET_TEST",
+                    "FLET_TEST_DEVICE_MODE",
+                    "FLET_TEST_PLATFORM",
                 )
+            )
+            if not is_flet_test:
+                try:
+                    await self.page.launch_url(auth_url)
+                except Exception as launch_ex:
+                    # 浏览器拉起失败（无默认浏览器/测试宿主）不应终止授权：
+                    # loopback 接收器继续等待，用户可手动打开授权页
+                    logger.warning(f"打开浏览器失败，请手动访问授权页: {launch_ex}")
+                    self.show_message(
+                        f"无法自动打开浏览器，请手动访问：{auth_url}", "warning"
+                    )
 
             # 阻塞等待放到线程，避免卡住事件循环（用户最多有 5 分钟完成授权）
             code = await asyncio.to_thread(receiver.wait_for_code, 300.0)

@@ -330,6 +330,30 @@ async def test_authorize_gdrive_uses_custom_endpoints(monkeypatch):
     assert view._gdrive_settings["refresh_token"] == "rt"
 
 
+async def test_authorize_gdrive_does_not_background_device_e2e(monkeypatch):
+    """设备 E2E 直接投递 loopback 回调，不应拉起浏览器使测试连接断开。"""
+    page, view = make_view()
+    switch_to_gdrive(view)
+    fill_gdrive_credentials(view, refresh_token="")
+
+    monkeypatch.setenv("FLET_TEST", "true")
+    monkeypatch.setattr(gdrive_module, "LoopbackOAuthReceiver", lambda: FakeReceiver())
+    monkeypatch.setattr(
+        gdrive_module,
+        "exchange_authorization_code",
+        lambda *args, **kwargs: {
+            "access_token": "at",
+            "refresh_token": "rt",
+            "expires_in": 3600,
+        },
+    )
+
+    await view._authorize_gdrive()
+
+    assert page.launched_urls == []
+    assert view.gdrive_auth_status.value == "已授权 ✓"
+
+
 async def test_authorize_gdrive_succeeds_with_real_receiver(monkeypatch):
     """回归（iOS 实测）：浏览器提示授权成功、返回应用却仍显示未授权。
 
