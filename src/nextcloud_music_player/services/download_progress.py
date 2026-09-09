@@ -171,8 +171,10 @@ class DownloadProgressTracker:
         )
         started_times = [s.started_at for s in states if s.started_at]
         if started_times:
-            end_time = now if active else max(
-                (s.finished_at for s in states if s.finished_at), default=now
+            end_time = (
+                now
+                if active
+                else max((s.finished_at for s in states if s.finished_at), default=now)
             )
             elapsed_seconds = max(end_time - min(started_times), 0.0)
         else:

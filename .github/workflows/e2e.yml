@@ -95,8 +95,10 @@ jobs:
             exit 1
           fi
           # Avoid stale generated pubspec path dependencies between cached runs.
+          # Keep Swift Package Manager enabled: Flet's iOS test host needs it to
+          # link serious_python_darwin and expose the serious_python_run symbol.
           flet clean
-          flet test ios --no-swift-package-manager --device-id "$UDID" \
+          flet test ios --device-id "$UDID" \
             --tests-dir tests/e2e -vv 2>&1 | tee flet-e2e.log
 
       - name: Collect simulator application logs

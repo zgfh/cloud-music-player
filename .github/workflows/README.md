@@ -36,7 +36,7 @@ uv run flake8 src/ --select=E9,F63,F7,F82
 **本地对应命令:**
 ```bash
 NO_PROXY=127.0.0.1,localhost,::1 no_proxy=127.0.0.1,localhost,::1 \
-  flet test ios --no-swift-package-manager --device-id <SIMULATOR_UDID> \
+  flet test ios --device-id <SIMULATOR_UDID> \
   --tests-dir tests/e2e -vv
 ```
 

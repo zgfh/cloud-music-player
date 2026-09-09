@@ -352,7 +352,11 @@ class SettingsView:
         cm.set("metadata.musicbrainz_enabled", bool(e.control.value))
         cm.save_config()
         self.show_message(
-            "MusicBrainz 在线查询已开启" if e.control.value else "MusicBrainz 在线查询已关闭",
+            (
+                "MusicBrainz 在线查询已开启"
+                if e.control.value
+                else "MusicBrainz 在线查询已关闭"
+            ),
             "success" if e.control.value else "info",
         )
 

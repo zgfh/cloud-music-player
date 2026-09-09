@@ -291,10 +291,14 @@ class FileListView:
         download_icon = (
             ft.Icons.TASK_ALT if is_downloaded else ft.Icons.CLOUD_DOWNLOAD_OUTLINED
         )
-        source_connected = any(
-            origin.get("source_type") in self.music_service.source_clients
-            for origin in origins
-        ) if origins else source_type in self.music_service.source_clients
+        source_connected = (
+            any(
+                origin.get("source_type") in self.music_service.source_clients
+                for origin in origins
+            )
+            if origins
+            else source_type in self.music_service.source_clients
+        )
         download_color = (
             Color.SUCCESS
             if is_downloaded
@@ -375,37 +379,45 @@ class FileListView:
             if parser:
                 parsed = parser(song_name)
         field_style = dict(
-            bgcolor=Color.BG_SURFACE_ALT, border_color=Color.BORDER,
-            focused_border_color=Color.PRIMARY, color=Color.TEXT_PRIMARY,
+            bgcolor=Color.BG_SURFACE_ALT,
+            border_color=Color.BORDER,
+            focused_border_color=Color.PRIMARY,
+            color=Color.TEXT_PRIMARY,
             border_radius=Radius.MD,
         )
         self.song_detail_name = song_name
         self.song_detail_mbid = song.get("musicbrainz_mbid", "")
         self.song_title_input = ft.TextField(
-            label="自定义歌名", value=(
-                song.get("custom_title") or parsed.get("title")
-                or song.get("title", "")
+            label="自定义歌名",
+            value=(
+                song.get("custom_title") or parsed.get("title") or song.get("title", "")
             ),
-            hint_text="仅改变应用内显示，不修改文件名", **field_style,
-        )
-        self.song_artist_input = ft.TextField(
-            label="歌手", value=parsed.get("artist") or song.get("artist", ""),
+            hint_text="仅改变应用内显示，不修改文件名",
             **field_style,
         )
-        self.song_album_input = ft.TextField(label="专辑", value=song.get("album", ""), **field_style)
-        self.song_year_input = ft.TextField(label="年份", value=str(song.get("year", "") or ""), **field_style)
+        self.song_artist_input = ft.TextField(
+            label="歌手",
+            value=parsed.get("artist") or song.get("artist", ""),
+            **field_style,
+        )
+        self.song_album_input = ft.TextField(
+            label="专辑", value=song.get("album", ""), **field_style
+        )
+        self.song_year_input = ft.TextField(
+            label="年份", value=str(song.get("year", "") or ""), **field_style
+        )
         self.song_query_status = ft.Text(
-            "可按当前歌手和歌名查询 MusicBrainz", size=FontSize.CAPTION,
+            "可按当前歌手和歌名查询 MusicBrainz",
+            size=FontSize.CAPTION,
             color=Color.TEXT_MUTED,
         )
         self.song_candidate_list = ft.ListView(height=190, spacing=Space.XS)
         musicbrainz_enabled = bool(
-            self.app_context["config_manager"].get(
-                "metadata.musicbrainz_enabled", True
-            )
+            self.app_context["config_manager"].get("metadata.musicbrainz_enabled", True)
         )
         self.song_query_button = ft.OutlinedButton(
-            "查询", icon=ft.Icons.SEARCH,
+            "查询",
+            icon=ft.Icons.SEARCH,
             on_click=lambda e: asyncio.create_task(self._query_song_metadata()),
             disabled=not musicbrainz_enabled,
         )
@@ -418,18 +430,32 @@ class FileListView:
                 width=520,
                 content=ft.Column(
                     [
-                        ft.Text(f"源文件：{song_name}", size=FontSize.CAPTION, color=Color.TEXT_MUTED),
-                        self.song_title_input, self.song_artist_input,
-                        ft.Row([self.song_album_input, self.song_year_input], spacing=Space.SM),
-                        ft.Row([self.song_query_button, self.song_query_status], spacing=Space.SM),
+                        ft.Text(
+                            f"源文件：{song_name}",
+                            size=FontSize.CAPTION,
+                            color=Color.TEXT_MUTED,
+                        ),
+                        self.song_title_input,
+                        self.song_artist_input,
+                        ft.Row(
+                            [self.song_album_input, self.song_year_input],
+                            spacing=Space.SM,
+                        ),
+                        ft.Row(
+                            [self.song_query_button, self.song_query_status],
+                            spacing=Space.SM,
+                        ),
                         self.song_candidate_list,
                     ],
-                    spacing=Space.SM, tight=True,
+                    spacing=Space.SM,
+                    tight=True,
                 ),
             ),
             actions=[
                 ft.TextButton("取消", on_click=lambda e: self.page.pop_dialog()),
-                ft.FilledButton("保存", icon=ft.Icons.SAVE, on_click=self._save_song_details),
+                ft.FilledButton(
+                    "保存", icon=ft.Icons.SAVE, on_click=self._save_song_details
+                ),
             ],
         )
         self.page.show_dialog(self.song_detail_dialog)
@@ -456,30 +482,43 @@ class FileListView:
         try:
             if not hasattr(self, "_musicbrainz_service"):
                 from ..services.musicbrainz_service import MusicBrainzService
+
                 self._musicbrainz_service = MusicBrainzService()
             candidates = await self._musicbrainz_service.search(artist, title)
             self.song_candidate_list.controls.clear()
             for candidate in candidates:
                 subtitle = " · ".join(
-                    part for part in (
-                        candidate.get("artist", ""), candidate.get("album", ""),
-                        candidate.get("year", ""), f"匹配 {candidate.get('confidence', 0)}%",
-                    ) if part
+                    part
+                    for part in (
+                        candidate.get("artist", ""),
+                        candidate.get("album", ""),
+                        candidate.get("year", ""),
+                        f"匹配 {candidate.get('confidence', 0)}%",
+                    )
+                    if part
                 )
                 self.song_candidate_list.controls.append(
                     ft.ListTile(
-                        title=ft.Text(candidate.get("title", ""), color=Color.TEXT_PRIMARY),
+                        title=ft.Text(
+                            candidate.get("title", ""), color=Color.TEXT_PRIMARY
+                        ),
                         subtitle=ft.Text(subtitle, color=Color.TEXT_MUTED),
                         trailing=ft.OutlinedButton(
-                            "选择", on_click=lambda e, item=candidate: self._select_song_candidate(item)
+                            "选择",
+                            on_click=lambda e, item=candidate: self._select_song_candidate(
+                                item
+                            ),
                         ),
                     )
                 )
             self.song_query_status.value = (
                 f"找到 {len(candidates)} 个候选，请选择后保存"
-                if candidates else "未找到匹配结果，可手动编辑后保存"
+                if candidates
+                else "未找到匹配结果，可手动编辑后保存"
             )
-            self.song_query_status.color = Color.SUCCESS_TEXT if candidates else Color.TEXT_MUTED
+            self.song_query_status.color = (
+                Color.SUCCESS_TEXT if candidates else Color.TEXT_MUTED
+            )
         except Exception as ex:
             logger.error("MusicBrainz 查询失败: %s", ex)
             self.song_query_status.value = (

@@ -88,7 +88,8 @@ class MusicLibrary:
                 )
             match = next(
                 (
-                    item for item in origins
+                    item
+                    for item in origins
                     if item.get("source_type") == source_type
                     and item.get("remote_path") == remote_path
                 ),
@@ -192,9 +193,7 @@ class MusicLibrary:
         name_without_ext = os.path.splitext(filename)[0]
 
         # 移除常见的曲序前缀，如 "0172." / "01 - " / "1_"。
-        name_without_ext = re.sub(
-            r"^\s*\d{1,4}\s*[._-]\s*", "", name_without_ext
-        )
+        name_without_ext = re.sub(r"^\s*\d{1,4}\s*[._-]\s*", "", name_without_ext)
 
         # 兼容 "Artist - Title" 和中文曲库常见的 "Artist-Title"。
         if "-" in name_without_ext:
@@ -216,8 +215,13 @@ class MusicLibrary:
         if not song:
             return False
         allowed = {
-            "custom_title", "artist", "album", "year", "musicbrainz_mbid",
-            "metadata_source", "metadata_updated_at",
+            "custom_title",
+            "artist",
+            "album",
+            "year",
+            "musicbrainz_mbid",
+            "metadata_source",
+            "metadata_updated_at",
         }
         for key in allowed:
             if key in metadata:

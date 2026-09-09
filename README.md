@@ -423,7 +423,7 @@ uv run flet test --tests-dir tests/e2e
 
 # 方式二：iOS 模拟器（与 CI 完全一致，渲染管线同真机）
 xcrun simctl list devices available | grep iPhone    # 任选一个模拟器 UDID
-uv run flet test ios --no-swift-package-manager --device-id <UDID> --tests-dir tests/e2e -v
+uv run flet test ios --device-id <UDID> --tests-dir tests/e2e -v
 ```
 
 前置条件：Flutter 3.44.x（与 flet 0.86.5 配套）；依赖已含在 `uv sync --extra dev` 中（`flet[test]` 提供 numpy/pillow/scikit-image，golden 截图对比用）。

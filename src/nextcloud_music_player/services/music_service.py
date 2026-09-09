@@ -460,10 +460,12 @@ class MusicService:
         song_info = self.music_library.get_song_info(filename) or {}
         origins = list(song_info.get("origins") or [])
         if not origins:
-            origins = [{
-                "source_type": song_info.get("source_type"),
-                "remote_path": song_info.get("remote_path", file_path),
-            }]
+            origins = [
+                {
+                    "source_type": song_info.get("source_type"),
+                    "remote_path": song_info.get("remote_path", file_path),
+                }
+            ]
         candidates = [
             (origin, self.source_clients.get(origin.get("source_type")))
             for origin in origins
@@ -504,7 +506,9 @@ class MusicService:
                             ),
                         )
                     else:
-                        success = await download_method(origin_path, filename, local_path)
+                        success = await download_method(
+                            origin_path, filename, local_path
+                        )
                 if success:
                     await self._post_download(filename, local_path, origin_path)
                     tracker.finish(filename, True)
@@ -514,7 +518,9 @@ class MusicService:
                 last_error = ex
                 logger.warning(
                     "从 %s 下载 %s 失败，尝试备用来源: %s",
-                    origin.get("source_type"), filename, ex,
+                    origin.get("source_type"),
+                    filename,
+                    ex,
                 )
         raise last_error or RuntimeError("所有来源下载失败")
 

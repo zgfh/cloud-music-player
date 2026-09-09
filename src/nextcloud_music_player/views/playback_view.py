@@ -566,24 +566,15 @@ class PlaybackView:
             if music_service and origins
             else music_service and source_type in music_service.source_clients
         )
-        if not (
-            song_name
-            and music_service
-            and source_available
-        ):
+        if not (song_name and music_service and source_available):
             return
         if music_service.get_local_file_path(song_name):
             return
-        if (
-            self._prefetch_task
-            and not self._prefetch_task.done()
-        ):
+        if self._prefetch_task and not self._prefetch_task.done():
             # 同一时间只预缓存一首；当前任务结束后会按最新播放索引重试。
             return
         self._prefetch_song_name = song_name
-        self._prefetch_task = asyncio.create_task(
-            self._prefetch_next_song(candidate)
-        )
+        self._prefetch_task = asyncio.create_task(self._prefetch_next_song(candidate))
 
     async def _prefetch_next_song(self, song_info: Dict[str, Any]) -> bool:
         """静默下载下一首；失败只记录日志，不打断当前播放。"""

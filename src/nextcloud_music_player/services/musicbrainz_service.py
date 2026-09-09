@@ -17,8 +17,7 @@ class MusicBrainzUnavailableError(RuntimeError):
 class MusicBrainzService:
     SEARCH_URL = "https://musicbrainz.org/ws/2/recording/"
     USER_AGENT = (
-        "NextCloudMusicPlayer/0.1.0 "
-        "(https://github.com/zgfh/cloud-music-player)"
+        "NextCloudMusicPlayer/0.1.0 " "(https://github.com/zgfh/cloud-music-player)"
     )
     _rate_lock = threading.Lock()
     _last_request_at = 0.0
@@ -34,7 +33,9 @@ class MusicBrainzService:
         def normalise(value: str) -> str:
             return " ".join(sorted(str(value or "").casefold().split()))
 
-        return round(SequenceMatcher(None, normalise(left), normalise(right)).ratio() * 100)
+        return round(
+            SequenceMatcher(None, normalise(left), normalise(right)).ratio() * 100
+        )
 
     @classmethod
     def _wait_for_rate_limit(cls) -> None:
