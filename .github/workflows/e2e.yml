@@ -49,6 +49,10 @@ jobs:
     needs: unit
     runs-on: macos-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [gdrive, nextcloud, smb, integration]
     steps:
       - uses: actions/checkout@v4
 
@@ -81,7 +85,7 @@ jobs:
           xcrun simctl boot "$UDID" 2>/dev/null || true
           xcrun simctl bootstatus "$UDID" -b
 
-      - name: Run full Flet E2E suite (iOS simulator + Mock Nextcloud)
+      - name: Run Flet E2E shard (${{ matrix.shard }})
         shell: bash
         run: |
           set -o pipefail
@@ -99,7 +103,8 @@ jobs:
           # link serious_python_darwin and expose the serious_python_run symbol.
           flet clean
           flet test ios --device-id "$UDID" \
-            --tests-dir tests/e2e -vv 2>&1 | tee flet-e2e.log
+            --tests-dir tests/e2e -k "${{ matrix.shard }}" -vv \
+            2>&1 | tee flet-e2e.log
 
       - name: Collect simulator application logs
         if: always()
@@ -118,7 +123,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: flet-e2e-${{ github.run_id }}
+          name: flet-e2e-${{ github.run_id }}-${{ matrix.shard }}
           path: |
             flet-e2e.log
             test-artifacts/
@@ -130,7 +135,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: flet-e2e-build-diagnostics-${{ github.run_id }}
+          name: flet-e2e-build-diagnostics-${{ github.run_id }}-${{ matrix.shard }}
           path: |
             build/**/pubspec.yaml
             build/**/pubspec.lock

@@ -8,3 +8,11 @@ def test_ios_e2e_keeps_swift_package_manager_enabled():
 
     assert "flet test ios --device-id" in workflow
     assert "--no-swift-package-manager" not in workflow
+
+
+def test_ios_e2e_is_sharded_to_stay_within_job_timeout():
+    workflow = (REPOSITORY_ROOT / ".github/workflows/e2e.yml").read_text()
+
+    assert "shard: [gdrive, nextcloud, smb, integration]" in workflow
+    assert '-k "${{ matrix.shard }}"' in workflow
+    assert "flet-e2e-${{ github.run_id }}-${{ matrix.shard }}" in workflow

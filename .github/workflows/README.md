@@ -40,6 +40,10 @@ NO_PROXY=127.0.0.1,localhost,::1 no_proxy=127.0.0.1,localhost,::1 \
   --tests-dir tests/e2e -vv
 ```
 
+CI 按 `gdrive`、`nextcloud`、`smb`、`integration` 四个关键字并行分片，避免
+iOS 测试宿主为每个用例重复构建时超过单个作业的 45 分钟上限；本地可用
+`-k <关键字>` 只运行对应分片。
+
 ### 3. Build and Release (`build.yml`)
 
 **触发:** push 到 main、PR 到 main、发布 Release、手动
