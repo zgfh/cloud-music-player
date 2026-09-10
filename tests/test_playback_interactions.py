@@ -77,24 +77,29 @@ async def test_volume_slider_applies_volume_immediately(playback_env):
 
 
 async def test_sleep_timer_defaults_to_30_minutes_and_can_be_adjusted(playback_env):
-    """睡眠定时器默认 30 分钟，启动后保存用户调整值并可取消。"""
+    """点击弹窗设置时长后立即倒计时，再次点击则取消。"""
     component = playback_env.view.playback_control_component
     controller = playback_env.view.playback_controller
 
     assert component.sleep_timer_input.value == "30"
-    component.sleep_timer_input.value = "45"
     await component._on_sleep_timer_toggle(None)
+    assert playback_env.page.dialogs[-1] is component.sleep_timer_dialog
+
+    component.sleep_timer_input.value = "45"
+    await component._on_sleep_timer_start(None)
 
     assert controller.is_sleep_timer_active() is True
     assert playback_env.config.get("player.sleep_timer_minutes") == 45
-    assert component.sleep_timer_input.disabled is True
-    assert component.sleep_timer_button.content == "取消"
-    assert component.sleep_timer_status.value == "45 分钟后停止播放"
+    assert component.sleep_timer_button.content == "45:00"
+    assert playback_env.page.popped_dialogs == 1
 
     await component._on_sleep_timer_toggle(None)
     assert controller.is_sleep_timer_active() is False
-    assert component.sleep_timer_input.disabled is False
-    assert component.sleep_timer_button.content == "启动"
+    assert component.sleep_timer_button.content == "定时"
+
+    await component._on_sleep_timer_toggle(None)
+    assert playback_env.page.dialogs[-1] is component.sleep_timer_dialog
+    assert component.sleep_timer_input.value == "45"
 
 
 async def test_sleep_timer_stops_playback_when_countdown_finishes(
@@ -104,16 +109,46 @@ async def test_sleep_timer_stops_playback_when_countdown_finishes(
     controller = playback_env.view.playback_controller
 
     async def no_wait(_seconds):
-        return None
+        controller._sleep_timer_deadline = 0
 
     monkeypatch.setattr(asyncio, "sleep", no_wait)
     playback_env.player.playing = True
     playback_env.view.playback_service.current_song_state["is_playing"] = True
 
-    await controller._sleep_timer_worker(1800)
+    controller._sleep_timer_deadline = 1
+    await controller._sleep_timer_worker()
 
     assert playback_env.player.stopped_count == 1
     assert playback_env.view.status_label.value == "停止"
+
+
+async def test_sleep_timer_does_not_stop_after_an_early_wakeup(
+    playback_env, monkeypatch
+):
+    """调度器提前唤醒时应按截止时间继续等待，不能提前停止播放。"""
+    controller = playback_env.view.playback_controller
+    now = 1000.0
+    waits = []
+
+    monkeypatch.setattr(
+        "nextcloud_music_player.services.playback_controller.time.monotonic",
+        lambda: now,
+    )
+
+    async def advance_clock(seconds):
+        nonlocal now
+        waits.append(seconds)
+        now += min(seconds, 10)
+
+    monkeypatch.setattr(asyncio, "sleep", advance_clock)
+    playback_env.player.playing = True
+    playback_env.view.playback_service.current_song_state["is_playing"] = True
+    controller._sleep_timer_deadline = now + 30
+
+    await controller._sleep_timer_worker()
+
+    assert waits == [30, 20, 10]
+    assert playback_env.player.stopped_count == 1
 
 
 async def test_seek_uses_user_value_even_if_progress_refresh_changes_slider(

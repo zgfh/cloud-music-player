@@ -5,7 +5,9 @@
 
 import asyncio
 import logging
+import math
 import random
+import time
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -46,6 +48,7 @@ class PlaybackController:
         self.ui_update_callback = ui_update_callback
         self.play_mode = PlayMode.REPEAT_ONE
         self._sleep_timer_task: asyncio.Task | None = None
+        self._sleep_timer_deadline: float | None = None
         self._sleep_timer_minutes = int(
             self.playback_service.config_manager.get("player.sleep_timer_minutes", 30)
             or 30
@@ -164,6 +167,12 @@ class PlaybackController:
     def is_sleep_timer_active(self) -> bool:
         return bool(self._sleep_timer_task and not self._sleep_timer_task.done())
 
+    def get_sleep_timer_remaining_seconds(self) -> int:
+        """返回基于单调时钟计算的剩余秒数，避免系统时间变化影响倒计时。"""
+        if not self.is_sleep_timer_active() or self._sleep_timer_deadline is None:
+            return 0
+        return max(0, math.ceil(self._sleep_timer_deadline - time.monotonic()))
+
     def start_sleep_timer(self, minutes: int) -> bool:
         """启动睡眠定时器，到期后停止播放。"""
         try:
@@ -178,26 +187,34 @@ class PlaybackController:
         config = self.playback_service.config_manager
         config.set("player.sleep_timer_minutes", minutes)
         config.save_config()
-        self._sleep_timer_task = asyncio.create_task(
-            self._sleep_timer_worker(minutes * 60)
-        )
+        self._sleep_timer_deadline = time.monotonic() + minutes * 60
+        self._sleep_timer_task = asyncio.create_task(self._sleep_timer_worker())
         return True
 
     def cancel_sleep_timer(self) -> None:
         task = self._sleep_timer_task
         self._sleep_timer_task = None
+        self._sleep_timer_deadline = None
         if task and not task.done():
             task.cancel()
 
-    async def _sleep_timer_worker(self, seconds: float) -> None:
+    async def _sleep_timer_worker(self) -> None:
         try:
-            await asyncio.sleep(seconds)
+            while True:
+                deadline = self._sleep_timer_deadline
+                if deadline is None:
+                    return
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                await asyncio.sleep(remaining)
             await self.stop_playback()
         except asyncio.CancelledError:
             return
         finally:
             if self._sleep_timer_task is asyncio.current_task():
                 self._sleep_timer_task = None
+                self._sleep_timer_deadline = None
 
     async def previous_song(self):
         """播放上一曲"""
