@@ -130,10 +130,7 @@ async def test_sleep_timer_does_not_stop_after_an_early_wakeup(
     now = 1000.0
     waits = []
 
-    monkeypatch.setattr(
-        "nextcloud_music_player.services.playback_controller.time.monotonic",
-        lambda: now,
-    )
+    monkeypatch.setattr(controller, "_monotonic", lambda: now)
 
     async def advance_clock(seconds):
         nonlocal now

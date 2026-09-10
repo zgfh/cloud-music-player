@@ -49,6 +49,7 @@ class PlaybackController:
         self.play_mode = PlayMode.REPEAT_ONE
         self._sleep_timer_task: asyncio.Task | None = None
         self._sleep_timer_deadline: float | None = None
+        self._monotonic = time.monotonic
         self._sleep_timer_minutes = int(
             self.playback_service.config_manager.get("player.sleep_timer_minutes", 30)
             or 30
@@ -171,7 +172,7 @@ class PlaybackController:
         """返回基于单调时钟计算的剩余秒数，避免系统时间变化影响倒计时。"""
         if not self.is_sleep_timer_active() or self._sleep_timer_deadline is None:
             return 0
-        return max(0, math.ceil(self._sleep_timer_deadline - time.monotonic()))
+        return max(0, math.ceil(self._sleep_timer_deadline - self._monotonic()))
 
     def start_sleep_timer(self, minutes: int) -> bool:
         """启动睡眠定时器，到期后停止播放。"""
@@ -187,7 +188,7 @@ class PlaybackController:
         config = self.playback_service.config_manager
         config.set("player.sleep_timer_minutes", minutes)
         config.save_config()
-        self._sleep_timer_deadline = time.monotonic() + minutes * 60
+        self._sleep_timer_deadline = self._monotonic() + minutes * 60
         self._sleep_timer_task = asyncio.create_task(self._sleep_timer_worker())
         return True
 
@@ -204,7 +205,7 @@ class PlaybackController:
                 deadline = self._sleep_timer_deadline
                 if deadline is None:
                     return
-                remaining = deadline - time.monotonic()
+                remaining = deadline - self._monotonic()
                 if remaining <= 0:
                     break
                 await asyncio.sleep(remaining)
