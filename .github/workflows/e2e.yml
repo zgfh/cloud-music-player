@@ -56,7 +56,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [gdrive, nextcloud, smb, integration]
+        # GDrive OAuth opens an external browser and cannot complete in the
+        # headless iOS test host; its mocked flows remain covered by pytest.
+        shard: [nextcloud, smb, integration]
     steps:
       - uses: actions/checkout@v4
 
