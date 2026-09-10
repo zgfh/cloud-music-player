@@ -12,6 +12,7 @@ import asyncio
 from types import SimpleNamespace
 
 import flet as ft
+import pytest
 from fakes import add_remote_song
 
 from nextcloud_music_player.services.playback_controller import PlayMode
@@ -64,6 +65,40 @@ async def test_native_completion_triggers_repeat_one(playback_env):
 
     assert len(playback_env.player.loaded_files) == initial_loads + 1
     assert playback_env.player.loaded_files[-1].endswith("loop.mp3")
+
+
+async def test_native_completion_continues_when_controls_are_frozen(
+    playback_env, monkeypatch
+):
+    """即使页面控件已冻结，原生完成事件也必须先触发续播。"""
+    info = add_remote_song(playback_env.library, "frozen-loop.mp3", downloaded=True)
+    playback_env.view.handle_play_selected([info])
+    await asyncio.sleep(0.05)
+    initial_loads = len(playback_env.player.loaded_files)
+    playback_env.view.playlist_manager._current_playlist_cache = {
+        "id": 1,
+        "songs": [{"name": "frozen-loop.mp3", "info": info}],
+        "current_index": 0,
+    }
+
+    playback_env.player.playing = False
+    playback_env.player.completed = True
+
+    def frozen_update():
+        raise RuntimeError("Frozen controls cannot be updated.")
+
+    monkeypatch.setattr(
+        playback_env.view.playback_control_component,
+        "update_progress",
+        frozen_update,
+    )
+
+    with pytest.raises(RuntimeError, match="Frozen controls"):
+        playback_env.view._update_progress_only()
+    await asyncio.sleep(0.5)
+
+    assert len(playback_env.player.loaded_files) == initial_loads + 1
+    assert playback_env.player.loaded_files[-1].endswith("frozen-loop.mp3")
 
 
 async def test_volume_slider_applies_volume_immediately(playback_env):

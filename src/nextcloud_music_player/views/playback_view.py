@@ -160,8 +160,9 @@ class PlaybackView:
 
     @staticmethod
     def _is_destroyed_session_error(error: Exception) -> bool:
-        """判断 Flet 客户端是否已经销毁当前会话。"""
-        return "destroyed session" in str(error).lower()
+        """判断 Flet 客户端是否已经销毁或冻结当前页面控件。"""
+        message = str(error).lower()
+        return "destroyed session" in message or "frozen controls" in message
 
     def build(self):
         """构建并返回视图"""
@@ -639,6 +640,14 @@ class PlaybackView:
         if not self._built:
             return
         try:
+            # 播放完成属于播放器状态，不能依赖页面控件仍可更新。Flet 在页面
+            # 切换或 iOS 挂起后可能冻结控件；若先刷新控件，异常会让续播逻辑
+            # 永远得不到执行，表现为每首歌结束后直接停止。
+            completed = self.playback_service.has_completed()
+            if completed and not self._song_completed:
+                self._song_completed = True
+                asyncio.create_task(self._auto_play_next_song())
+
             if self.playback_control_component:
                 self.playback_control_component.update_progress()
 
@@ -658,11 +667,7 @@ class PlaybackView:
 
             # 优先使用播放器的自然结束事件。部分原生后端结束时会立即把
             # position 归零，旧的“进度接近 100%”判断会因此漏掉续播。
-            completed = self.playback_service.has_completed()
-            if completed and not self._song_completed:
-                self._song_completed = True
-                asyncio.create_task(self._auto_play_next_song())
-            elif duration > 0 and position > 0:
+            if not completed and duration > 0 and position > 0:
                 progress_ratio = position / duration
                 from ..platform_audio import is_ios
 
