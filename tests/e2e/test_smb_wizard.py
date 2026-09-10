@@ -37,7 +37,7 @@ async def test_smb_empty_address_shows_feedback(flet_app: ftt.FletTestApp):
     await tester.enter_text(host_input, "")
     await tester.pump_and_settle()
 
-    connect = await wait_for(tester, lambda: tester.find_by_key("connect_button_smb"))
+    connect = await wait_for(tester, lambda: tester.find_by_text("建立连接"))
     assert connect.count >= 1, "应找到当前 SMB 表单的连接按钮"
     await tester.tap(connect.last)
 
@@ -57,7 +57,7 @@ async def test_smb_address_opens_wizard_dialog(flet_app: ftt.FletTestApp):
     await tester.enter_text(host_input, "192.0.2.1")
     await tester.pump_and_settle()
 
-    connect = await wait_for(tester, lambda: tester.find_by_key("connect_button_smb"))
+    connect = await wait_for(tester, lambda: tester.find_by_text("建立连接"))
     assert connect.count >= 1, "应找到当前 SMB 表单的连接按钮"
     await tester.tap(connect.last)
 

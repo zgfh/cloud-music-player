@@ -15,7 +15,7 @@ import flet.testing as ftt
 from helpers import wait_for
 
 
-async def test_integration_switch_source_to_smb(flet_app: ftt.FletTestApp):
+async def test_integration_switch_source(flet_app: ftt.FletTestApp):
     """连接页来源切换：Nextcloud 表单 → SMB 表单，标题与控件同步切换"""
     tester = flet_app.tester
     await tester.pump_and_settle()
@@ -42,6 +42,4 @@ async def test_integration_switch_source_to_smb(flet_app: ftt.FletTestApp):
     # 切回 Nextcloud 还原配置与界面
     await tester.tap(await tester.find_by_text("Nextcloud"))
     await tester.pump_and_settle()
-    assert (
-        await wait_for(tester, lambda: tester.find_by_text("NEXTCLOUD"))
-    ).count == 1
+    assert (await wait_for(tester, lambda: tester.find_by_text("NEXTCLOUD"))).count == 1

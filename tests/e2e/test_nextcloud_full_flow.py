@@ -43,7 +43,7 @@ async def test_nextcloud_sync_download_and_playback(
 
     await tap_and_wait(
         tester,
-        lambda: tester.find_by_key("connect_button_nextcloud"),
+        lambda: tester.find_by_text("建立连接"),
         lambda: tester.find_by_text("同步"),
         timeout=15,
     )
@@ -54,6 +54,7 @@ async def test_nextcloud_sync_download_and_playback(
         lambda: tester.find_by_key(f"song:{SONG_NAME}"),
         timeout=15,
     )
+    assert song.count >= 1, "同步后应显示测试歌曲"
 
     await tester.tap(song.last)
     await tester.pump_and_settle()
@@ -77,9 +78,7 @@ async def test_nextcloud_wrong_password_shows_error_then_recovers(
         tester, mock_nextcloud_server.url, USERNAME, "not-the-password"
     )
 
-    connect = await wait_for(
-        tester, lambda: tester.find_by_key("connect_button_nextcloud")
-    )
+    connect = await wait_for(tester, lambda: tester.find_by_text("建立连接"))
     assert connect.count >= 1, "应找到当前 Nextcloud 表单的连接按钮"
     await tester.tap(connect.last)
     await settle_network(tester, 1.0)
@@ -92,7 +91,7 @@ async def test_nextcloud_wrong_password_shows_error_then_recovers(
     await tester.enter_text(await tester.find_by_key("nextcloud_password"), PASSWORD)
     await tap_and_wait(
         tester,
-        lambda: tester.find_by_key("connect_button_nextcloud"),
+        lambda: tester.find_by_text("建立连接"),
         lambda: tester.find_by_text("同步"),
         timeout=15,
     )
@@ -106,9 +105,7 @@ async def test_nextcloud_unreachable_server_shows_error(flet_app: ftt.FletTestAp
     await _open_nextcloud_form(tester)
     await _fill_credentials(tester, "http://127.0.0.1:1", USERNAME, PASSWORD)
 
-    connect = await wait_for(
-        tester, lambda: tester.find_by_key("connect_button_nextcloud")
-    )
+    connect = await wait_for(tester, lambda: tester.find_by_text("建立连接"))
     assert connect.count >= 1, "应找到当前 Nextcloud 表单的连接按钮"
     await tester.tap(connect.last)
     await settle_network(tester, 1.0)
