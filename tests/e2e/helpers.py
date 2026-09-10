@@ -30,7 +30,10 @@ async def tap_and_wait(
     tester: ftt.Tester, target_finder_factory, expected_factory, timeout: float = 10.0
 ):
     """tap 目标控件并等待期望控件出现（tap 本身找不到目标时直接抛 RemoteTesterError）。"""
-    await tester.tap(await target_finder_factory())
+    target = await wait_for(tester, target_finder_factory, timeout=timeout)
+    if not target.count:
+        raise AssertionError("等待点击目标超时")
+    await tester.tap(target.last)
     await tester.pump_and_settle()
     return await wait_for(tester, expected_factory, timeout=timeout)
 

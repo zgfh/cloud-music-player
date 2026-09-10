@@ -48,10 +48,13 @@ def switch_to_gdrive(view):
     view._on_source_type_changed(None)
 
 
-def test_connect_button_has_stable_test_key():
+def test_connect_button_key_identifies_active_source():
     _, view = make_view()
 
-    assert view.connect_button.key == "connect_button"
+    assert view.connect_button.key == "connect_button_nextcloud"
+
+    _, gdrive_view = make_view({"connection": {"source_type": "gdrive"}})
+    assert gdrive_view.connect_button.key == "connect_button_gdrive"
 
 
 def fill_gdrive_credentials(

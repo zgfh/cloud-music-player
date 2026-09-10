@@ -82,7 +82,9 @@ async def _deliver_to_loopback_with_retry(tester, params, timeout: float = 15.0)
 
 async def _fill_gdrive_credentials(tester):
     await tester.enter_text(await tester.find_by_key("gdrive_client_id"), CLIENT_ID)
-    await tester.enter_text(await tester.find_by_key("gdrive_client_secret"), CLIENT_SECRET)
+    await tester.enter_text(
+        await tester.find_by_key("gdrive_client_secret"), CLIENT_SECRET
+    )
     await tester.pump_and_settle()
 
 
@@ -140,7 +142,7 @@ async def test_gdrive_authorize_sync_download_and_playback(
 
     await tap_and_wait(
         tester,
-        lambda: tester.find_by_key("connect_button"),
+        lambda: tester.find_by_key("connect_button_gdrive"),
         lambda: tester.find_by_text("同步"),
         timeout=15,
     )
@@ -157,9 +159,7 @@ async def test_gdrive_authorize_sync_download_and_playback(
     await tester.tap(await tester.find_by_text("播放"))
     await settle_network(tester, 1.0)
 
-    playing = await wait_for(
-        tester, lambda: tester.find_by_text("播放中"), timeout=15
-    )
+    playing = await wait_for(tester, lambda: tester.find_by_text("播放中"), timeout=15)
     assert playing.count >= 1, "播放启动后应显示播放中状态"
     assert (await tester.find_by_text(SONG_NAME)).count >= 1
 
@@ -177,7 +177,9 @@ async def test_gdrive_authorize_denied_shows_error(
     clicked = await _tap_authorize_with_retry(tester)
     assert clicked, "点击「授权」后未进入等待浏览器授权状态"
 
-    delivered = await _deliver_to_loopback_with_retry(tester, {"error": "access_denied"})
+    delivered = await _deliver_to_loopback_with_retry(
+        tester, {"error": "access_denied"}
+    )
     assert delivered, "未能向 loopback 接收器投递授权错误"
 
     error = await wait_for(
@@ -203,7 +205,11 @@ async def test_gdrive_expired_token_refresh_failure_then_recovery(
     await _authorize(tester, mock_gdrive_server)
 
     mock_gdrive_server.set_token_error("invalid_grant")
-    await tester.tap(await tester.find_by_key("connect_button"))
+    connect = await wait_for(
+        tester, lambda: tester.find_by_key("connect_button_gdrive")
+    )
+    assert connect.count >= 1, "应找到当前 Google Drive 表单的连接按钮"
+    await tester.tap(connect.last)
     error = await wait_for(
         tester, lambda: tester.find_by_text_containing("连接失败"), timeout=15
     )
@@ -220,7 +226,7 @@ async def test_gdrive_expired_token_refresh_failure_then_recovery(
     mock_gdrive_server.set_expires_in(3600)
     await tap_and_wait(
         tester,
-        lambda: tester.find_by_key("connect_button"),
+        lambda: tester.find_by_key("connect_button_gdrive"),
         lambda: tester.find_by_text("同步"),
         timeout=15,
     )

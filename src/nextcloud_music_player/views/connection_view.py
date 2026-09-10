@@ -456,7 +456,9 @@ class ConnectionView:
         # === 主按钮：霓虹发光 ===
         self.connect_button = ft.FilledButton(
             "建立连接",
-            key="connect_button",
+            # 视图切换会完整重建连接页；按来源区分 key，避免 iOS 测试宿主
+            # 暂存的旧 Semantics 节点截获下一来源的点击。
+            key=f"connect_button_{source_type}",
             icon=ft.Icons.BOLT,
             on_click=self._on_connect_clicked,
             expand=2,
