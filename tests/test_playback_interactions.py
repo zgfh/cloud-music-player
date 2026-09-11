@@ -206,6 +206,160 @@ async def test_repeat_one_reports_replay_failure(playback_env, monkeypatch):
     assert await playback_env.view.playback_controller.auto_play_next_song() is False
 
 
+async def test_play_pause_resume_stop_state_sequence(playback_env):
+    """完整基本控制序列必须同步播放器、服务状态、文案和按钮。"""
+    info = add_remote_song(playback_env.library, "sequence.mp3", downloaded=True)
+    assert await playback_env.view.play_selected_song(info) is True
+    assert playback_env.player.playing is True
+
+    await playback_env.view.playback_controller.toggle_playback()
+    assert playback_env.player.paused is True
+    assert playback_env.view.status_label.value == "暂停"
+    assert playback_env.view.playback_service.current_song_state["is_paused"] is True
+
+    await playback_env.view.playback_controller.toggle_playback()
+    assert playback_env.player.playing is True
+    assert playback_env.view.status_label.value == "播放中"
+    assert playback_env.view.playback_service.current_song_state["is_paused"] is False
+
+    assert await playback_env.view.playback_controller.stop_playback() is True
+    assert playback_env.player.playing is False
+    assert playback_env.view.status_label.value == "停止"
+
+
+@pytest.mark.parametrize(
+    ("operation", "start_index", "expected_index"),
+    [
+        ("next_song", 0, 1),
+        ("next_song", 1, 0),
+        ("previous_song", 0, 1),
+        ("previous_song", 1, 0),
+    ],
+)
+async def test_manual_navigation_wraps_independently_of_repeat_mode(
+    playback_env, operation, start_index, expected_index
+):
+    """手动上一/下一曲在边界循环，且不受单曲循环模式阻止。"""
+    songs = [
+        add_remote_song(playback_env.library, name, downloaded=True)
+        for name in ("first.mp3", "second.mp3")
+    ]
+    playlist = {
+        "id": 1,
+        "songs": [{"name": info["name"], "info": info} for info in songs],
+        "current_index": start_index,
+    }
+    playback_env.view.playlist_manager._current_playlist_cache = playlist
+    playback_env.view.playback_controller.set_play_mode(PlayMode.REPEAT_ONE)
+
+    assert await getattr(playback_env.view.playback_controller, operation)() is True
+    assert playlist["current_index"] == expected_index
+    assert playback_env.player.loaded_files[-1].endswith(songs[expected_index]["name"])
+
+
+async def test_next_song_skips_unavailable_tracks(playback_env, monkeypatch):
+    """下一首不可播放时继续寻找，且一轮内不会无限重试。"""
+    infos = [
+        add_remote_song(playback_env.library, name, downloaded=True)
+        for name in ("first.mp3", "broken.mp3", "third.mp3")
+    ]
+    playlist = {
+        "id": 1,
+        "songs": [{"name": info["name"], "info": info} for info in infos],
+        "current_index": 0,
+    }
+    playback_env.view.playlist_manager._current_playlist_cache = playlist
+    attempted = []
+
+    async def selective_play(info):
+        attempted.append(info["name"])
+        return info["name"] == "third.mp3"
+
+    monkeypatch.setattr(
+        playback_env.view.playback_controller, "play_song_callback", selective_play
+    )
+
+    assert await playback_env.view.playback_controller.next_song() is True
+    assert attempted == ["broken.mp3", "third.mp3"]
+    assert playlist["current_index"] == 2
+
+
+@pytest.mark.parametrize("minutes", [None, "bad", 0, -1, 1441])
+def test_sleep_timer_rejects_invalid_ranges(playback_env, minutes):
+    """无效倒计时时长不能创建后台任务或覆盖已保存设置。"""
+    controller = playback_env.view.playback_controller
+    original = controller.get_sleep_timer_minutes()
+
+    assert controller.start_sleep_timer(minutes) is False
+    assert controller.is_sleep_timer_active() is False
+    assert controller.get_sleep_timer_minutes() == original
+
+
+async def test_sleep_timer_cancel_prevents_stop(playback_env):
+    """取消倒计时后，即使事件循环继续运行也不能停止播放器。"""
+    controller = playback_env.view.playback_controller
+    playback_env.player.playing = True
+    playback_env.view.playback_service.current_song_state["is_playing"] = True
+
+    assert controller.start_sleep_timer(1) is True
+    controller.cancel_sleep_timer()
+    await asyncio.sleep(0)
+
+    assert controller.get_sleep_timer_remaining_seconds() == 0
+    assert playback_env.player.stopped_count == 0
+
+
+async def test_button_guard_blocks_double_click_and_recovers_after_error(playback_env):
+    """控制按钮防重入，并在动作异常后恢复可用。"""
+    component = playback_env.view.playback_control_component
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    calls = 0
+
+    async def slow_action():
+        nonlocal calls
+        calls += 1
+        entered.set()
+        await release.wait()
+
+    first = asyncio.create_task(component._safe_button_action(slow_action, "测试"))
+    await entered.wait()
+    await component._safe_button_action(slow_action, "测试")
+    release.set()
+    await first
+    assert calls == 1
+    assert component._button_busy is False
+
+    async def broken_action():
+        raise RuntimeError("boom")
+
+    await component._safe_button_action(broken_action, "测试")
+    assert component._button_busy is False
+
+
+@pytest.mark.parametrize(
+    ("position", "duration", "slider", "current", "total"),
+    [
+        (0, 0, 0, "00:00", "00:00"),
+        (65, 130, 50, "01:05", "02:10"),
+        (150, 100, 100, "02:30", "01:40"),
+    ],
+)
+def test_progress_display_boundaries(
+    playback_env, monkeypatch, position, duration, slider, current, total
+):
+    """未知时长、正常进度和越界进度均应稳定显示。"""
+    component = playback_env.view.playback_control_component
+    monkeypatch.setattr(component, "get_current_position", lambda: position)
+    monkeypatch.setattr(component, "get_current_duration", lambda: duration)
+
+    component.update_progress()
+
+    assert component.progress_slider.value == slider
+    assert component.current_time_label.value == current
+    assert component.total_time_label.value == total
+
+
 async def test_volume_slider_applies_volume_immediately(playback_env):
     """拖动音量后应立即下发给播放器，并持久化百分比配置。"""
     component = playback_env.view.playback_control_component
