@@ -101,6 +101,111 @@ async def test_native_completion_continues_when_controls_are_frozen(
     assert playback_env.player.loaded_files[-1].endswith("frozen-loop.mp3")
 
 
+@pytest.mark.parametrize(
+    ("mode", "start_index", "expected_name", "expected_index", "expected_result"),
+    [
+        (PlayMode.NORMAL, 0, "second.mp3", 1, True),
+        (PlayMode.NORMAL, 1, None, 1, False),
+        (PlayMode.REPEAT_ONE, 0, "first.mp3", 0, True),
+        (PlayMode.REPEAT_ALL, 1, "first.mp3", 0, True),
+    ],
+)
+async def test_auto_completion_mode_matrix(
+    playback_env,
+    mode,
+    start_index,
+    expected_name,
+    expected_index,
+    expected_result,
+):
+    """自然结束后的目标歌曲必须符合顺序、单曲和列表循环语义。"""
+    first = add_remote_song(playback_env.library, "first.mp3", downloaded=True)
+    second = add_remote_song(playback_env.library, "second.mp3", downloaded=True)
+    playlist = {
+        "id": 1,
+        "songs": [
+            {"name": "first.mp3", "info": first},
+            {"name": "second.mp3", "info": second},
+        ],
+        "current_index": start_index,
+    }
+    playback_env.view.playlist_manager._current_playlist_cache = playlist
+    playback_env.view.play_mode = mode
+    playback_env.view.playback_controller.set_play_mode(mode)
+
+    result = await playback_env.view.playback_controller.auto_play_next_song()
+
+    assert result is expected_result
+    assert playlist["current_index"] == expected_index
+    if expected_name is None:
+        assert playback_env.player.loaded_files == []
+    else:
+        assert playback_env.player.loaded_files[-1].endswith(expected_name)
+
+
+async def test_duplicate_completion_event_schedules_only_one_transition(playback_env):
+    """同一首歌的重复完成采样不能连续跳过两首。"""
+    songs = [
+        add_remote_song(playback_env.library, name, downloaded=True)
+        for name in ("first.mp3", "second.mp3", "third.mp3")
+    ]
+    playlist = {
+        "id": 1,
+        "songs": [{"name": info["name"], "info": info} for info in songs],
+        "current_index": 0,
+    }
+    playback_env.view.playlist_manager._current_playlist_cache = playlist
+    playback_env.view.play_mode = PlayMode.NORMAL
+    playback_env.view.playback_controller.set_play_mode(PlayMode.NORMAL)
+    playback_env.player.completed = True
+
+    playback_env.view._update_progress_only()
+    # 模拟后端在异步切歌开始前重复报告完成。
+    playback_env.player.completed = True
+    playback_env.view._update_progress_only()
+    await asyncio.sleep(0.5)
+
+    assert playlist["current_index"] == 1
+    assert len(playback_env.player.loaded_files) == 1
+    assert playback_env.player.loaded_files[0].endswith("second.mp3")
+
+
+async def test_paused_progress_refresh_keeps_paused_ui(playback_env):
+    """暂停期间的定时刷新不得把状态改成停止或播放。"""
+    info = add_remote_song(playback_env.library, "paused-refresh.mp3", downloaded=True)
+    assert await playback_env.view.play_selected_song(info) is True
+    await playback_env.view.playback_controller.toggle_playback()
+
+    playback_env.view._update_progress_only()
+
+    assert playback_env.view.status_label.value == "暂停"
+    assert (
+        playback_env.view.playback_control_component.play_icon.icon
+        == ft.Icons.PLAY_ARROW
+    )
+    assert playback_env.player.loaded_files == [info["filepath"]]
+
+
+async def test_repeat_one_reports_replay_failure(playback_env, monkeypatch):
+    """单曲循环重播失败时不能伪报成功并清除完成状态。"""
+    info = add_remote_song(playback_env.library, "broken-loop.mp3", downloaded=True)
+    playback_env.view.playlist_manager._current_playlist_cache = {
+        "id": 1,
+        "songs": [{"name": info["name"], "info": info}],
+        "current_index": 0,
+    }
+    playback_env.view.playback_controller.set_play_mode(PlayMode.REPEAT_ONE)
+
+    async def failed_replay(_info):
+        return False
+
+    monkeypatch.setattr(
+        playback_env.view.playback_controller, "play_song_callback", failed_replay
+    )
+
+    assert await playback_env.view.playback_controller.auto_play_next_song() is False
+
+
 async def test_volume_slider_applies_volume_immediately(playback_env):
     """拖动音量后应立即下发给播放器，并持久化百分比配置。"""
     component = playback_env.view.playback_control_component

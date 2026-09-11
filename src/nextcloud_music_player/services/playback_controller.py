@@ -319,8 +319,20 @@ class PlaybackController:
                     if 0 <= current_index < len(songs):
                         selected_song = songs[current_index]
                         if self.play_song_callback:
-                            await self.play_song_callback(selected_song["info"])
-                        return True
+                            return bool(
+                                await self.play_song_callback(selected_song["info"])
+                            )
+                        return False
+            elif self.play_mode == PlayMode.NORMAL:
+                # 顺序播放只前进到列表末尾；回到第一首是列表循环的语义。
+                current_playlist = self.playlist_manager.get_current_playlist()
+                if not current_playlist or not current_playlist.get("songs"):
+                    return False
+                current_index = current_playlist.get("current_index", 0)
+                if current_index >= len(current_playlist["songs"]) - 1:
+                    logger.info("顺序播放模式：已到播放列表末尾")
+                    return False
+                return await self.next_song()
             else:
                 # 其他模式：播放下一曲
                 logger.info(f"{self.play_mode.value}模式：播放下一曲")
