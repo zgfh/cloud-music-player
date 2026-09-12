@@ -69,6 +69,12 @@ class PlaybackView:
             play_song_callback=self.play_selected_song,
             ui_update_callback=self.on_playback_state_changed,
         )
+        self._event_loop = asyncio.get_running_loop()
+        completion_setter = getattr(
+            self.playback_service.audio_player, "set_completion_callback", None
+        )
+        if completion_setter:
+            completion_setter(self._on_native_playback_completed)
 
         # 播放控制组件
         self.playback_control_component = PlaybackControlComponent(
@@ -131,6 +137,16 @@ class PlaybackView:
         # 播放请求序号：每次新的播放请求自增，仍在进行的旧请求（下载/播放）完成后发现
         # 序号已过期即丢弃，避免慢网络下旧下载完成把用户最新选择的歌曲顶掉
         self._play_request_seq = 0
+
+    def _on_native_playback_completed(self) -> None:
+        """Bridge the iOS delegate callback to the owning asyncio loop."""
+
+        def schedule_next():
+            if not self._song_completed:
+                self._song_completed = True
+                asyncio.create_task(self._auto_play_next_song())
+
+        self._event_loop.call_soon_threadsafe(schedule_next)
 
     def rebuild(self):
         """重建视图（Flet 0.86 控件脱离页面后被冻结且不可复用，切回时必须重建）"""

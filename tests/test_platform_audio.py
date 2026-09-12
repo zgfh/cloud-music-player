@@ -6,6 +6,35 @@ import pytest
 
 from nextcloud_music_player import platform_audio
 from nextcloud_music_player.platform_audio import FletAudioPlayer
+from nextcloud_music_player.platform_audio import iOSAudioPlayer
+
+
+def test_ios_natural_completion_is_consumed_once_and_notifies_listener():
+    """AVAudioPlayer delegate completion must work without UI progress polling."""
+    player = iOSAudioPlayer.__new__(iOSAudioPlayer)
+    calls = []
+    player._completed = False
+    player._completion_callback = lambda: calls.append("completed")
+
+    player._handle_playback_finished(True)
+
+    assert calls == ["completed"]
+    assert player.has_completed() is True
+    assert player.has_completed() is False
+
+
+def test_ios_unsuccessful_finish_does_not_advance_queue():
+    player = iOSAudioPlayer.__new__(iOSAudioPlayer)
+    calls = []
+    player._completed = False
+    player._completion_callback = lambda: calls.append("completed")
+
+    player._handle_playback_finished(False)
+
+    assert calls == []
+    assert player.has_completed() is False
+
+
 from nextcloud_music_player.services.playback_service import PlaybackService
 
 

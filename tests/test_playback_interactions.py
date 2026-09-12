@@ -67,6 +67,34 @@ async def test_native_completion_triggers_repeat_one(playback_env):
     assert playback_env.player.loaded_files[-1].endswith("loop.mp3")
 
 
+async def test_native_completion_callback_continues_without_ui_polling(playback_env):
+    """后台冻结且 UI 定时器不运行时，原生完成回调仍必须续播。"""
+    first = add_remote_song(
+        playback_env.library, "background-first.mp3", downloaded=True
+    )
+    second = add_remote_song(
+        playback_env.library, "background-second.mp3", downloaded=True
+    )
+    playlist = {
+        "id": 1,
+        "songs": [
+            {"name": first["name"], "info": first},
+            {"name": second["name"], "info": second},
+        ],
+        "current_index": 0,
+    }
+    playback_env.view.playlist_manager._current_playlist_cache = playlist
+    playback_env.view.playback_controller.set_play_mode(PlayMode.NORMAL)
+    playback_env.view.view_manager.app_backgrounded = True
+    playback_env.view._cancel_ui_timer()
+
+    playback_env.view._on_native_playback_completed()
+    await asyncio.sleep(0.5)
+
+    assert playlist["current_index"] == 1
+    assert playback_env.player.loaded_files[-1].endswith("background-second.mp3")
+
+
 async def test_native_completion_continues_when_controls_are_frozen(
     playback_env, monkeypatch
 ):

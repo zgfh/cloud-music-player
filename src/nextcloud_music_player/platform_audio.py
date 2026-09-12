@@ -686,19 +686,37 @@ class iOSAudioPlayer:
         self._current_file = None
         self._volume = 0.7
         self._audio_manager = None
+        self._completed = False
+        self._completion_callback = None
+        self._delegate = None
         self._init_avfoundation()
 
     def _init_avfoundation(self):
         """初始化AVFoundation"""
         try:
             # 尝试导入iOS的AVFoundation
-            from rubicon.objc import ObjCClass, objc_method
+            from rubicon.objc import NSObject, ObjCClass, ObjCProtocol, objc_method
 
             # 获取AVFoundation类
             self.AVAudioPlayer = ObjCClass("AVAudioPlayer")
             self.NSURL = ObjCClass("NSURL")
             self.NSString = ObjCClass("NSString")
             self.AVAudioSession = ObjCClass("AVAudioSession")
+
+            owner = self
+            try:
+                protocols = [ObjCProtocol("AVAudioPlayerDelegate")]
+            except NameError:
+                protocols = []
+
+            class _AudioPlayerDelegate(NSObject, protocols=protocols):
+                @objc_method
+                def audioPlayerDidFinishPlaying_successfully_(
+                    self, player, successfully: bool
+                ):
+                    owner._handle_playback_finished(bool(successfully))
+
+            self._delegate = _AudioPlayerDelegate.alloc().init()
 
             # 初始化后台音频管理器
             try:
@@ -779,6 +797,7 @@ class iOSAudioPlayer:
             )
 
             if self._player:
+                self._player.delegate = self._delegate
                 # 准备播放
                 prepare_success = self._player.prepareToPlay()
                 logger.debug(f"iOS load: prepareToPlay 结果: {prepare_success}")
@@ -791,6 +810,7 @@ class iOSAudioPlayer:
                 logger.info(f"iOS音频文件加载成功: {file_path}, 时长: {duration:.2f}秒")
 
                 self._current_file = file_path
+                self._completed = False
                 return True
             else:
                 logger.error(f"无法创建AVAudioPlayer: {file_path}")
@@ -862,8 +882,25 @@ class iOSAudioPlayer:
                 # isPlaying 是属性，不是方法
                 return bool(self._player.isPlaying)
             return False
-        except:
+        except Exception:
             return False
+
+    def set_completion_callback(self, callback) -> None:
+        """Register a callback fired directly by AVAudioPlayer at natural EOF."""
+        self._completion_callback = callback
+
+    def _handle_playback_finished(self, successfully: bool) -> None:
+        self._completed = successfully
+        if successfully and self._completion_callback:
+            try:
+                self._completion_callback()
+            except Exception:
+                logger.exception("iOS播放完成回调失败")
+
+    def has_completed(self) -> bool:
+        completed = self._completed
+        self._completed = False
+        return completed
 
     def set_volume(self, volume: float) -> bool:
         """设置音量 (0.0-1.0)"""
