@@ -102,23 +102,31 @@ def choose_physical_device(requested_id: str | None) -> IOSDevice:
     return device
 
 
-def select_xcode_destination(device: IOSDevice) -> None:
+def visible_step(message: str, delay: float) -> None:
+    print(f"STEP: {message}", flush=True)
+    if delay > 0:
+        time.sleep(delay)
+
+
+def select_xcode_destination(device: IOSDevice, step_delay: float) -> None:
     """Select the named physical device from Product > Destination using AX menus."""
     import atomacos
 
+    visible_step("打开 Xcode 的 Product 菜单", step_delay)
     app = atomacos.getAppRefByBundleId("com.apple.dt.Xcode")
     product = next(
         item for item in app.AXMenuBar.AXChildren
         if getattr(item, "AXTitle", "") == "Product"
     )
     product.Press()
-    time.sleep(0.3)
+    time.sleep(max(0.3, step_delay))
+    visible_step("展开 Product → Destination", step_delay)
     destination = next(
         item for item in product.AXChildren[0].AXChildren
         if getattr(item, "AXTitle", "") == "Destination"
     )
     destination.Press()
-    time.sleep(0.3)
+    time.sleep(max(0.3, step_delay))
     destination_menu = destination.AXChildren[0]
     candidates = [
         item for item in destination_menu.AXChildren
@@ -134,10 +142,12 @@ def select_xcode_destination(device: IOSDevice) -> None:
             f"Xcode does not list physical destination: {device.name}; "
             "unlock the phone and confirm Trust This Computer"
         )
+    visible_step(f"选择物理设备：{device.name}", step_delay)
     candidates[0].Press()
-    time.sleep(1)
+    time.sleep(max(1, step_delay))
 
     # Reopen the semantic menu and require a checkmark on the physical device.
+    visible_step("重新打开 Destination，检查物理设备勾选状态", step_delay)
     product.Press()
     time.sleep(0.2)
     destination = next(
@@ -205,6 +215,10 @@ def load_credentials(config_path: Path) -> Credentials:
         raise RuntimeError(f"Missing non-empty 'user' in {config_path}")
     if not isinstance(password, str) or not password:
         raise RuntimeError(f"Missing non-empty 'pass' in {config_path}")
+    if len(password) < 8:
+        raise RuntimeError(
+            f"The 'pass' value in {config_path} is too short to be an Apple Account password"
+        )
     return Credentials(user=user.strip(), password=password)
 
 
@@ -216,6 +230,18 @@ def secure_type(text: str) -> None:
     Quartz.CGEventKeyboardSetUnicodeString(event, len(text), text)
     Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
     time.sleep(0.1)
+
+
+def focused_xcode_field_role() -> tuple[str, str]:
+    """Return the focused AX role/subrole without reading its sensitive value."""
+    import atomacos
+
+    app = atomacos.getAppRefByBundleId("com.apple.dt.Xcode")
+    element = app.AXFocusedUIElement
+    return (
+        getattr(element, "AXRole", "") or "",
+        getattr(element, "AXSubrole", "") or "",
+    )
 
 
 def open_accounts_window(desktop: Desktop):
@@ -245,7 +271,12 @@ def open_accounts_window(desktop: Desktop):
     )
 
 
-def ensure_xcode_account(desktop: Desktop, project_window, config_path: Path) -> Credentials | None:
+def ensure_xcode_account(
+    desktop: Desktop,
+    project_window,
+    config_path: Path,
+    step_delay: float,
+) -> Credentials | None:
     """Log in only when Xcode explicitly shows that no Apple Account is configured."""
     accounts = open_accounts_window(desktop)
     accounts.focus()
@@ -275,16 +306,49 @@ def ensure_xcode_account(desktop: Desktop, project_window, config_path: Path) ->
         pending.extend(getattr(element, "AXChildren", None) or [])
     if not buttons:
         raise RuntimeError("Xcode sign-in button was not exposed through Accessibility")
-    buttons[-1].Press()
-    time.sleep(2)
+    # Ignore window chrome, scrollbars, and navigation buttons. The content sign-in
+    # control is the largest enabled button in the Accounts pane.
+    def button_area(button) -> float:
+        size = getattr(button, "AXSize", (0, 0))
+        return float(size[0]) * float(size[1])
 
+    sign_in_button = max(buttons, key=button_area)
+    visible_step("点击 Apple Account 登录按钮", step_delay)
+    sign_in_button.Press()
+    time.sleep(max(2, step_delay))
+
+    visible_step("填写 Apple Account 用户名（内容不会输出）", step_delay)
     secure_type(credentials.user)
     desktop.hotkey("{enter}")
-    time.sleep(2)
+    password_deadline = time.monotonic() + 30
+    while time.monotonic() < password_deadline:
+        _role, subrole = focused_xcode_field_role()
+        if subrole == "AXSecureTextField":
+            break
+        time.sleep(0.5)
+    else:
+        raise RuntimeError("Xcode did not advance from username to the secure password field")
+
+    visible_step("填写 Apple Account 密码（内容不会输出）", step_delay)
     secure_type(credentials.password)
     desktop.hotkey("{enter}")
-    time.sleep(4)
+    visible_step("等待 Xcode 完成账户登录", step_delay)
+    login_deadline = time.monotonic() + 30
+    while time.monotonic() < login_deadline:
+        _role, subrole = focused_xcode_field_role()
+        if subrole != "AXSecureTextField":
+            break
+        time.sleep(0.5)
+    else:
+        raise RuntimeError(
+            "Xcode remained on the password field; login was not accepted. "
+            "Check ~/.xcode/config.yaml before retrying"
+        )
 
+    try:
+        accounts = desktop.get_window("Apple Accounts")
+    except Exception:
+        pass
     login_text = credentials.redact(ui_text(accounts))
     if any(marker in login_text.lower() for marker in ("verification code", "two-factor", "验证码")):
         raise RuntimeError("Apple two-factor verification is required; complete it in Xcode")
@@ -328,7 +392,16 @@ def ui_text(window) -> str:
 
 
 def wait_for_xcode_window(desktop: Desktop, timeout: int):
-    return desktop.wait_for_window(regex_name=r".*Runner.*", timeout=timeout)
+    # Xcode 26 may title the window "Runner.xcodeproj" even when its semantic
+    # document root is Runner.xcworkspace. Validate the AX document, not the title.
+    window = desktop.wait_for_window(regex_name=r".*Runner.*", timeout=timeout)
+    try:
+        window.find(role="splitgroup", name="Runner.xcworkspace")
+    except Exception as exc:
+        raise RuntimeError(
+            f"Xcode window is not backed by Runner.xcworkspace: {window.name}"
+        ) from exc
+    return window
 
 
 def deploy(
@@ -337,7 +410,9 @@ def deploy(
     config_path: Path,
     check_account: bool,
     requested_device_id: str | None,
+    step_delay: float,
 ) -> int:
+    visible_step("通过 CoreDevice 检查物理 iPhone", step_delay)
     try:
         device = choose_physical_device(requested_device_id)
     except (RuntimeError, subprocess.CalledProcessError) as exc:
@@ -348,6 +423,7 @@ def deploy(
         flush=True,
     )
 
+    visible_step(f"用 Xcode 打开 workspace：{workspace.name}", step_delay)
     subprocess.run(["open", "-a", "Xcode", str(workspace)], check=True)
 
     desktop = Desktop(highlight_actions=True)
@@ -356,7 +432,7 @@ def deploy(
     print(f"Tarsier connected to Xcode window: {window.name}", flush=True)
 
     try:
-        select_xcode_destination(device)
+        select_xcode_destination(device, step_delay)
     except (RuntimeError, StopIteration, AttributeError) as exc:
         print(f"Unable to select physical Xcode destination: {exc}", file=sys.stderr)
         return 2
@@ -365,10 +441,23 @@ def deploy(
 
     credentials = None
     if check_account:
+        visible_step("打开 Xcode Apple Accounts 并检查登录状态", step_delay)
         try:
-            credentials = ensure_xcode_account(desktop, window, config_path)
+            credentials = ensure_xcode_account(desktop, window, config_path, step_delay)
         except RuntimeError as exc:
             print(f"Unable to prepare Xcode account: {exc}", file=sys.stderr)
+            return 2
+
+        # Xcode may replace/close the project window while account state changes.
+        # Reopen the workspace and reacquire fresh Accessibility references.
+        visible_step("账户检查完成，重新打开 workspace 并刷新窗口引用", step_delay)
+        subprocess.run(["open", "-a", "Xcode", str(workspace)], check=True)
+        try:
+            window = wait_for_xcode_window(desktop, min(timeout, 60))
+            window.focus()
+            select_xcode_destination(device, step_delay)
+        except (RuntimeError, TimeoutError, StopIteration, AttributeError) as exc:
+            print(f"Unable to restore Xcode workspace after account check: {exc}", file=sys.stderr)
             return 2
 
     try:
@@ -393,7 +482,7 @@ def deploy(
             print("Existing Xcode session did not stop.", file=sys.stderr)
             return 2
 
-    print("Tarsier clicking Xcode Run…", flush=True)
+    visible_step("即将点击 Xcode Run，开始真机构建和部署", step_delay)
     run_button.click()
 
     deadline = time.monotonic() + timeout
@@ -453,6 +542,10 @@ def main() -> int:
         help="physical iPhone CoreDevice identifier; defaults to the first available iPhone",
     )
     parser.add_argument(
+        "--step-delay", type=float, default=2.0,
+        help="seconds to pause before visible GUI steps (default: 2.0)",
+    )
+    parser.add_argument(
         "--config", type=Path, default=Path("~/.xcode/config.yaml"),
         help="local credential file (default: ~/.xcode/config.yaml)",
     )
@@ -466,12 +559,15 @@ def main() -> int:
     if not workspace.exists():
         parser.error(f"workspace does not exist: {workspace}")
     config_path = args.config.expanduser().resolve()
+    if args.step_delay < 0:
+        parser.error("--step-delay must be zero or greater")
     return deploy(
         workspace,
         args.timeout,
         config_path,
         not args.skip_account_check,
         args.device_id,
+        args.step_delay,
     )
 
 
