@@ -161,12 +161,13 @@ bash scripts/deploy_iso.sh --refresh # 仅刷新签名（代码未变时，速�
 Build/Run（构建、签名、安装并启动到当前选中的 iPhone）：
 ```bash
 uv tool install 'tarsier-ai==0.6.0' # 首次安装
-cp .xcode/config.example.yaml .xcode/config.yaml
-chmod 600 .xcode/config.yaml         # 填写 user/pass，仅本机可读
+mkdir -p ~/.xcode
+cp docs/xcode-config.example.yaml ~/.xcode/config.yaml
+chmod 600 ~/.xcode/config.yaml       # 填写 user/pass，仅本机可读
 bash scripts/deploy_xcode_tarsier.sh
 ```
 该方式要求 macOS 已登录桌面、Xcode 已登录 Apple Account，并给 Tarsier Python
-授予“辅助功能”权限。`.xcode/config.yaml` 已被 Git 忽略，脚本只在 Xcode 需要重新
+授予“辅助功能”权限。凭据固定存放在用户目录 `~/.xcode/config.yaml`，不属于代码仓库；脚本只在 Xcode 需要重新
 登录时读取，且不会把账号密码放入命令行、环境变量、剪贴板或日志。Apple 两步验证仍需
 在 Xcode 中人工完成。锁屏的定时任务不适合 GUI 自动化，请使用 `deploy_iso.sh`。
 

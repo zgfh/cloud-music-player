@@ -1,0 +1,4 @@
+# Copy this template to ~/.xcode/config.yaml and run chmod 600 on that file.
+# Never commit a config file containing real credentials.
+user: "your-apple-account@example.com"
+pass: "your-apple-account-password"

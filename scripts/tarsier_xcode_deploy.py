@@ -45,7 +45,7 @@ def load_credentials(config_path: Path) -> Credentials:
     except FileNotFoundError as exc:
         raise RuntimeError(
             f"Xcode account needs login; create {config_path} from "
-            ".xcode/config.example.yaml and run chmod 600 on it"
+            "docs/xcode-config.example.yaml and run chmod 600 on it"
         ) from exc
 
     if mode & 0o077:
@@ -303,7 +303,10 @@ def main() -> int:
     )
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--timeout", type=int, default=900)
-    parser.add_argument("--config", type=Path, default=Path(".xcode/config.yaml"))
+    parser.add_argument(
+        "--config", type=Path, default=Path("~/.xcode/config.yaml"),
+        help="local credential file (default: ~/.xcode/config.yaml)",
+    )
     parser.add_argument(
         "--skip-account-check", action="store_true",
         help="do not open Xcode Accounts before deployment",

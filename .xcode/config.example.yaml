@@ -1,4 +1,0 @@
-# Copy to config.yaml, fill in locally, then run: chmod 600 .xcode/config.yaml
-# config.yaml is ignored by Git. Never commit real credentials.
-user: "your-apple-account@example.com"
-pass: "your-apple-account-password"

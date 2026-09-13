@@ -1,6 +1,5 @@
 .vscode/
 .zcode/
-.xcode/config.yaml
 __pycache__/
 *.pyc
 *.egg-info/
