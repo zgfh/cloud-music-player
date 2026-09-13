@@ -34,13 +34,17 @@ Xcode 的 Run，由 Xcode 完成构建、签名、安装和启动：
 
 ```bash
 uv tool install 'tarsier-ai==0.6.0' # 首次安装
+cp .xcode/config.example.yaml .xcode/config.yaml
+chmod 600 .xcode/config.yaml         # 填写 user/pass，仅本机可读
 bash scripts/deploy_xcode_tarsier.sh
 bash scripts/deploy_xcode_tarsier.sh --timeout 1200 # 可选：延长超时
 ```
 
 运行前需在 Xcode 中选择目标 iPhone，并确保 Xcode Apple Account 已登录；运行脚本的
 Tarsier Python 还需获得 macOS“辅助功能”权限。GUI 自动化要求用户桌面会话保持登录且
-未锁屏，因此无人值守的定时续签仍推荐 `deploy_iso.sh`。
+未锁屏，因此无人值守的定时续签仍推荐 `deploy_iso.sh`。本地凭据文件
+`.xcode/config.yaml` 已加入 `.gitignore`；脚本要求权限为 `0600`，并且不会通过参数、
+环境变量、剪贴板或日志传递密码。若 Apple 要求两步验证码，需在 Xcode 中人工完成。
 
 ### 手动构建
 
