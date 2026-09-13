@@ -25,6 +25,16 @@ FAILURE_MARKERS = (
     "signing for",
 )
 
+# CoreDevice terminology differs across Xcode releases. Older versions commonly
+# report an unlocked device as "available"; Xcode 26 may report "connected".
+USABLE_DEVICE_STATES = {"available", "connected"}
+
+
+def is_usable_device_state(state: str) -> bool:
+    """Accept CoreDevice suffixes such as 'available (paired)'."""
+    primary_state = state.strip().lower().split(maxsplit=1)[0]
+    return primary_state in USABLE_DEVICE_STATES
+
 
 @dataclass(frozen=True)
 class Credentials:
@@ -78,13 +88,13 @@ def choose_physical_device(requested_id: str | None) -> IOSDevice:
             raise RuntimeError(f"physical iPhone not found: {requested_id}")
         device = matches[0]
     else:
-        available = [device for device in devices if device.state == "available"]
+        available = [device for device in devices if is_usable_device_state(device.state)]
         if not available:
             states = ", ".join(f"{d.name}={d.state}" for d in devices) or "none found"
             raise RuntimeError(f"no available physical iPhone ({states})")
         device = available[0]
 
-    if device.state != "available":
+    if not is_usable_device_state(device.state):
         raise RuntimeError(
             f"physical iPhone is not available: {device.name} ({device.state}); "
             "unlock and reconnect it"

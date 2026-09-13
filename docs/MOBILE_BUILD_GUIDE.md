@@ -41,7 +41,8 @@ bash scripts/deploy_xcode_tarsier.sh
 bash scripts/deploy_xcode_tarsier.sh --timeout 1200 # 可选：延长超时
 ```
 
-脚本会先用 `devicectl` 查找状态为 `available` 的物理 iPhone，再通过 Accessibility
+脚本会先用 `devicectl` 查找状态为 `available`（含 `available (paired)`）或
+`connected` 的物理 iPhone，再通过 Accessibility
 选择 Xcode Product → Destination 中同名设备并检查勾选状态。没有可用真机时立即退出，
 不会回退到模拟器；多台真机连接时可使用 `--device-id <UDID>` 指定。
 

@@ -166,7 +166,8 @@ cp docs/xcode-config.example.yaml ~/.xcode/config.yaml
 chmod 600 ~/.xcode/config.yaml       # 填写 user/pass，仅本机可读
 bash scripts/deploy_xcode_tarsier.sh
 ```
-脚本只允许选择 `devicectl` 报告为 `available` 的物理 iPhone，并会在 Xcode 的
+脚本只允许选择 `devicectl` 报告为 `available`（含 `available (paired)`）或
+`connected` 的物理 iPhone，并会在 Xcode 的
 Product → Destination 菜单中验证勾选状态；手机不可用时直接失败，绝不回退到模拟器。
 多台手机连接时可传入 `--device-id <UDID>`。
 
