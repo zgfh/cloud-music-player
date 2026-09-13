@@ -41,7 +41,11 @@ bash scripts/deploy_xcode_tarsier.sh
 bash scripts/deploy_xcode_tarsier.sh --timeout 1200 # 可选：延长超时
 ```
 
-运行前需在 Xcode 中选择目标 iPhone，并确保 Xcode Apple Account 已登录；运行脚本的
+脚本会先用 `devicectl` 查找状态为 `available` 的物理 iPhone，再通过 Accessibility
+选择 Xcode Product → Destination 中同名设备并检查勾选状态。没有可用真机时立即退出，
+不会回退到模拟器；多台真机连接时可使用 `--device-id <UDID>` 指定。
+
+运行前需解锁并连接目标 iPhone，并确保 Xcode Apple Account 已登录；运行脚本的
 Tarsier Python 还需获得 macOS“辅助功能”权限。GUI 自动化要求用户桌面会话保持登录且
 未锁屏，因此无人值守的定时续签仍推荐 `deploy_iso.sh`。本地凭据文件固定从用户目录
 `~/.xcode/config.yaml` 读取，不在代码仓库中；脚本要求权限为 `0600`，并且不会通过参数、

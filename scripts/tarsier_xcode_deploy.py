@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import ast
 from dataclasses import dataclass
+import re
 import stat
 import subprocess
 import sys
@@ -36,6 +37,116 @@ class Credentials:
             if secret:
                 result = result.replace(secret, "<redacted>")
         return result
+
+
+@dataclass(frozen=True)
+class IOSDevice:
+    name: str
+    identifier: str
+    state: str
+    model: str
+
+
+def physical_ios_devices() -> list[IOSDevice]:
+    """Return physical iPhones reported by CoreDevice; simulators are excluded."""
+    result = subprocess.run(
+        ["xcrun", "devicectl", "list", "devices"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    devices: list[IOSDevice] = []
+    uuid_pattern = re.compile(
+        r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-"
+        r"[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
+    )
+    for line in result.stdout.splitlines():
+        columns = re.split(r"\s{2,}", line.strip())
+        if len(columns) < 5 or not uuid_pattern.fullmatch(columns[2]):
+            continue
+        name, _hostname, identifier, state, model = columns[:5]
+        if "iphone" in model.lower():
+            devices.append(IOSDevice(name, identifier, state.lower(), model))
+    return devices
+
+
+def choose_physical_device(requested_id: str | None) -> IOSDevice:
+    devices = physical_ios_devices()
+    if requested_id:
+        matches = [device for device in devices if device.identifier.lower() == requested_id.lower()]
+        if not matches:
+            raise RuntimeError(f"physical iPhone not found: {requested_id}")
+        device = matches[0]
+    else:
+        available = [device for device in devices if device.state == "available"]
+        if not available:
+            states = ", ".join(f"{d.name}={d.state}" for d in devices) or "none found"
+            raise RuntimeError(f"no available physical iPhone ({states})")
+        device = available[0]
+
+    if device.state != "available":
+        raise RuntimeError(
+            f"physical iPhone is not available: {device.name} ({device.state}); "
+            "unlock and reconnect it"
+        )
+    return device
+
+
+def select_xcode_destination(device: IOSDevice) -> None:
+    """Select the named physical device from Product > Destination using AX menus."""
+    import atomacos
+
+    app = atomacos.getAppRefByBundleId("com.apple.dt.Xcode")
+    product = next(
+        item for item in app.AXMenuBar.AXChildren
+        if getattr(item, "AXTitle", "") == "Product"
+    )
+    product.Press()
+    time.sleep(0.3)
+    destination = next(
+        item for item in product.AXChildren[0].AXChildren
+        if getattr(item, "AXTitle", "") == "Destination"
+    )
+    destination.Press()
+    time.sleep(0.3)
+    destination_menu = destination.AXChildren[0]
+    candidates = [
+        item for item in destination_menu.AXChildren
+        if getattr(item, "AXRole", "") == "AXMenuItem"
+        and (
+            getattr(item, "AXTitle", "") == device.name
+            or getattr(item, "AXTitle", "").startswith(f"{device.name} (")
+        )
+    ]
+    if not candidates:
+        destination.Cancel()
+        raise RuntimeError(
+            f"Xcode does not list physical destination: {device.name}; "
+            "unlock the phone and confirm Trust This Computer"
+        )
+    candidates[0].Press()
+    time.sleep(1)
+
+    # Reopen the semantic menu and require a checkmark on the physical device.
+    product.Press()
+    time.sleep(0.2)
+    destination = next(
+        item for item in product.AXChildren[0].AXChildren
+        if getattr(item, "AXTitle", "") == "Destination"
+    )
+    destination.Press()
+    time.sleep(0.2)
+    selected = [
+        item for item in destination.AXChildren[0].AXChildren
+        if (
+            getattr(item, "AXTitle", "") == device.name
+            or getattr(item, "AXTitle", "").startswith(f"{device.name} (")
+        )
+        and bool(getattr(item, "AXMenuItemMarkChar", ""))
+    ]
+    destination.Cancel()
+    if not selected:
+        raise RuntimeError(f"Xcode did not select physical destination: {device.name}")
 
 
 def load_credentials(config_path: Path) -> Credentials:
@@ -210,13 +321,37 @@ def wait_for_xcode_window(desktop: Desktop, timeout: int):
     return desktop.wait_for_window(regex_name=r".*Runner.*", timeout=timeout)
 
 
-def deploy(workspace: Path, timeout: int, config_path: Path, check_account: bool) -> int:
+def deploy(
+    workspace: Path,
+    timeout: int,
+    config_path: Path,
+    check_account: bool,
+    requested_device_id: str | None,
+) -> int:
+    try:
+        device = choose_physical_device(requested_device_id)
+    except (RuntimeError, subprocess.CalledProcessError) as exc:
+        print(f"Unable to prepare physical iPhone: {exc}", file=sys.stderr)
+        return 2
+    print(
+        f"Physical iPhone found: {device.name} ({device.identifier}, {device.model})",
+        flush=True,
+    )
+
     subprocess.run(["open", "-a", "Xcode", str(workspace)], check=True)
 
     desktop = Desktop(highlight_actions=True)
     window = wait_for_xcode_window(desktop, min(timeout, 60))
     window.focus()
     print(f"Tarsier connected to Xcode window: {window.name}", flush=True)
+
+    try:
+        select_xcode_destination(device)
+    except (RuntimeError, StopIteration, AttributeError) as exc:
+        print(f"Unable to select physical Xcode destination: {exc}", file=sys.stderr)
+        return 2
+    window.focus()
+    print(f"Xcode physical destination selected: {device.name}", flush=True)
 
     credentials = None
     if check_account:
@@ -304,6 +439,10 @@ def main() -> int:
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--timeout", type=int, default=900)
     parser.add_argument(
+        "--device-id",
+        help="physical iPhone CoreDevice identifier; defaults to the first available iPhone",
+    )
+    parser.add_argument(
         "--config", type=Path, default=Path("~/.xcode/config.yaml"),
         help="local credential file (default: ~/.xcode/config.yaml)",
     )
@@ -317,7 +456,13 @@ def main() -> int:
     if not workspace.exists():
         parser.error(f"workspace does not exist: {workspace}")
     config_path = args.config.expanduser().resolve()
-    return deploy(workspace, args.timeout, config_path, not args.skip_account_check)
+    return deploy(
+        workspace,
+        args.timeout,
+        config_path,
+        not args.skip_account_check,
+        args.device_id,
+    )
 
 
 if __name__ == "__main__":

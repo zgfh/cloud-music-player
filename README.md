@@ -166,6 +166,10 @@ cp docs/xcode-config.example.yaml ~/.xcode/config.yaml
 chmod 600 ~/.xcode/config.yaml       # 填写 user/pass，仅本机可读
 bash scripts/deploy_xcode_tarsier.sh
 ```
+脚本只允许选择 `devicectl` 报告为 `available` 的物理 iPhone，并会在 Xcode 的
+Product → Destination 菜单中验证勾选状态；手机不可用时直接失败，绝不回退到模拟器。
+多台手机连接时可传入 `--device-id <UDID>`。
+
 该方式要求 macOS 已登录桌面、Xcode 已登录 Apple Account，并给 Tarsier Python
 授予“辅助功能”权限。凭据固定存放在用户目录 `~/.xcode/config.yaml`，不属于代码仓库；脚本只在 Xcode 需要重新
 登录时读取，且不会把账号密码放入命令行、环境变量、剪贴板或日志。Apple 两步验证仍需
